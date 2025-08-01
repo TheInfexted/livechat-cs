@@ -41,7 +41,13 @@ abstract class BaseController extends Controller
     protected $chatModel;
     protected $userModel;
     protected $messageModel;
+    protected $chatQueueModel;
+    protected $cannedResponseModel;
+    protected $chatFileModel;
+    protected $chatAnalyticsModel;
+    protected $customerModel;
 
+    
     /**
      * Be sure to declare properties for any property fetch you initialized.
      * The creation of dynamic property is deprecated in PHP 8.2.
@@ -63,5 +69,16 @@ abstract class BaseController extends Controller
         $this->chatModel = new \App\Models\ChatModel();
         $this->userModel = new \App\Models\UserModel();
         $this->messageModel = new \App\Models\MessageModel();
+        $this->chatFileModel = new \App\Models\ChatFileModel();
+    }
+    
+    protected function jsonResponse($data, $statusCode = 200)
+    {
+        return $this->response->setJSON($data)->setStatusCode($statusCode);
+    }
+    
+    protected function generateSessionId()
+    {
+        return bin2hex(random_bytes(32));
     }
 }

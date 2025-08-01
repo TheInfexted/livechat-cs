@@ -52,4 +52,17 @@ Events::on('pre_system', static function (): void {
             });
         }
     }
+    
+    // Schedule maintenance tasks
+    // Run maintenance every hour
+    $lastMaintenance = cache('last_chat_maintenance');
+    $now = time();
+    
+    if (!$lastMaintenance || ($now - $lastMaintenance) > 3600) { // 1 hour
+        // Run in background to avoid blocking requests
+        if (function_exists('exec') && !is_cli()) {
+            exec('php ' . ROOTPATH . 'spark chat:maintenance > /dev/null 2>&1 &');
+        }
+        cache()->save('last_chat_maintenance', $now, 7200); // Cache for 2 hours
+    }
 });

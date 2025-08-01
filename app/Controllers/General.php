@@ -54,4 +54,13 @@ class General extends BaseController
     {
         return $this->response->setJSON($data)->setStatusCode($status);
     }
+    
+    /**
+     * Check if current user is admin
+     */
+    public function isAdmin()
+    {
+        $user = $this->getCurrentUser();
+        return $user && $user['role'] === 'admin';
+    }
 }

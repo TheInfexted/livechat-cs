@@ -1,6 +1,7 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('content') ?>
+<link rel="stylesheet" href="<?= base_url('assets/css/admin.css') ?>">
 <div class="admin-agents">
     <div class="page-header">
         <h2>Manage Agents</h2>
@@ -34,8 +35,12 @@
                         </span>
                     </td>
                     <td>
-                        <button class="btn btn-sm btn-primary">Edit</button>
-                        <button class="btn btn-sm btn-danger">Delete</button>
+                        <?php if ($user['role'] === 'admin'): ?>
+                            <button class="btn btn-sm btn-primary" onclick="editAgent(<?= $agent['id'] ?>, '<?= esc($agent['username']) ?>', '<?= esc($agent['email']) ?>', '<?= esc($agent['role']) ?>')">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAgent(<?= $agent['id'] ?>, '<?= esc($agent['username']) ?>')">Delete</button>
+                        <?php else: ?>
+                            <span class="text-muted">View Only</span>
+                        <?php endif; ?>
                     </td>
                 </tr>
                 <?php endforeach; ?>
@@ -44,83 +49,70 @@
     </div>
 </div>
 
-<style>
-.admin-agents {
-    padding: 2rem;
+<script>
+function editAgent(agentId, username, email, role) {
+    const newUsername = prompt('Enter new username:', username);
+    if (!newUsername) return;
+    
+    const newEmail = prompt('Enter new email:', email);
+    if (!newEmail) return;
+    
+    const newRole = prompt('Enter new role (admin/support):', role);
+    if (!newRole || !['admin', 'support'].includes(newRole)) {
+        alert('Invalid role. Must be "admin" or "support".');
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('agent_id', agentId);
+    formData.append('username', newUsername);
+    formData.append('email', newEmail);
+    formData.append('role', newRole);
+    
+    fetch('/admin/agents/edit', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Agent updated successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while updating the agent.');
+    });
 }
 
-.page-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
+function deleteAgent(agentId, username) {
+    if (!confirm(`Are you sure you want to delete agent "${username}"?`)) {
+        return;
+    }
+    
+    const formData = new FormData();
+    formData.append('agent_id', agentId);
+    
+    fetch('/admin/agents/delete', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('Agent deleted successfully!');
+            location.reload();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('An error occurred while deleting the agent.');
+    });
 }
-
-.agents-table {
-    width: 100%;
-    border-collapse: collapse;
-    background: white;
-    border-radius: 10px;
-    overflow: hidden;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-}
-
-.agents-table th,
-.agents-table td {
-    padding: 1rem;
-    text-align: left;
-    border-bottom: 1px solid #eee;
-}
-
-.agents-table th {
-    background: #f8f9fa;
-    font-weight: 600;
-    color: #333;
-}
-
-.role-badge {
-    padding: 0.25rem 0.5rem;
-    border-radius: 3px;
-    font-size: 0.8rem;
-    font-weight: 500;
-}
-
-.role-admin {
-    background: #dc3545;
-    color: white;
-}
-
-.role-support {
-    background: #17a2b8;
-    color: white;
-}
-
-.status-badge {
-    padding: 0.25rem 0.5rem;
-    border-radius: 3px;
-    font-size: 0.8rem;
-    font-weight: 500;
-}
-
-.status-active {
-    background: #28a745;
-    color: white;
-}
-
-.status-inactive {
-    background: #6c757d;
-    color: white;
-}
-
-.btn-sm {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.8rem;
-    margin-right: 0.25rem;
-}
-
-.btn-danger {
-    background: #dc3545;
-    color: white;
-}
-</style>
+</script>
 <?= $this->endSection() ?> 

@@ -14,8 +14,8 @@ class ChatModel extends Model
     {
         return $this->select('chat_sessions.*, users.username as agent_name')
                     ->join('users', 'users.id = chat_sessions.agent_id', 'left')
-                    ->where('status', 'active')
-                    ->orderBy('created_at', 'DESC')
+                    ->where('chat_sessions.status', 'active')
+                    ->orderBy('chat_sessions.created_at', 'DESC')
                     ->findAll();
     }
     

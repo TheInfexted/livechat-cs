@@ -7,6 +7,7 @@
         <div class="user-info">
             <span>Welcome, <?= esc($user['username']) ?></span>
             <span class="status-indicator" id="connectionStatus">Offline</span>
+            <a href="<?= base_url('admin/dashboard') ?>" class="btn btn-home">Home</a>
             <a href="<?= base_url('logout') ?>" class="btn btn-logout">Logout</a>
         </div>
     </div>

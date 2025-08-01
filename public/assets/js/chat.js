@@ -113,6 +113,20 @@ function handleWebSocketMessage(data) {
         case 'update_sessions':
             refreshAdminSessions();
             break;
+
+        case 'queue_update':
+            handleQueueUpdate(data);
+            break;
+            
+        case 'file_uploaded':
+            displayFileMessage(data.file_info);
+            break;
+            
+        case 'system_message':
+            displaySystemMessage(data.message);
+            break;
+            
+ 
     }
 }
 
@@ -623,6 +637,182 @@ async function checkSessionStatus() {
     return true; // No session ID or not customer
 }
 
+// File upload handling
+function handleFileUpload(sessionId) {
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*,.pdf,.txt,.doc,.docx';
+    
+    fileInput.onchange = function(e) {
+        const file = e.target.files[0];
+        if (file) {
+            uploadFile(file, sessionId);
+        }
+    };
+    
+    fileInput.click();
+}
+
+async function uploadFile(file, sessionId) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('session_id', sessionId);
+    
+    try {
+        const response = await fetch('/chat/upload-file', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Send file message through WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'file_upload',
+                    session_id: sessionId,
+                    file_info: {
+                        name: result.file_name,
+                        url: result.file_url,
+                        id: result.file_id
+                    }
+                }));
+            }
+        } else {
+            alert('File upload failed: ' + result.error);
+        }
+    } catch (error) {
+        console.error('File upload error:', error);
+        alert('File upload failed. Please try again.');
+    }
+}
+
+// Canned responses
+function showCannedResponses() {
+    if (!currentSessionId) return;
+    
+    fetch('/api/canned-responses')
+        .then(response => response.json())
+        .then(responses => {
+            displayCannedResponsesModal(responses);
+        });
+}
+
+function displayCannedResponsesModal(responses) {
+    const modal = document.createElement('div');
+    modal.className = 'canned-responses-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Quick Responses</h3>
+                <button class="close-modal" onclick="this.parentElement.parentElement.parentElement.remove()">×</button>
+            </div>
+            <div class="modal-body">
+                ${responses.map(response => `
+                    <div class="canned-response-item" onclick="sendCannedResponse('${response.id}')">
+                        <strong>${response.title}</strong>
+                        <p>${response.content}</p>
+                    </div>
+                `).join('')}
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+async function sendCannedResponse(responseId) {
+    try {
+        const response = await fetch('/chat/canned-response', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `session_id=${currentSessionId}&response_id=${responseId}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Message will be sent via WebSocket automatically
+            document.querySelector('.canned-responses-modal')?.remove();
+        }
+    } catch (error) {
+        console.error('Error sending canned response:', error);
+    }
+}
+
+// Customer satisfaction rating
+function showRatingModal(sessionId) {
+    const modal = document.createElement('div');
+    modal.className = 'rating-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <h3>Rate Your Experience</h3>
+            <div class="rating-stars">
+                ${[1,2,3,4,5].map(i => `
+                    <span class="star" data-rating="${i}" onclick="selectRating(${i})">★</span>
+                `).join('')}
+            </div>
+            <textarea placeholder="Additional feedback (optional)" id="ratingFeedback"></textarea>
+            <div class="modal-actions">
+                <button onclick="submitRating('${sessionId}')">Submit</button>
+                <button onclick="this.parentElement.parentElement.parentElement.remove()">Skip</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+function selectRating(rating) {
+    document.querySelectorAll('.star').forEach((star, index) => {
+        star.classList.toggle('selected', index < rating);
+    });
+    window.selectedRating = rating;
+}
+
+async function submitRating(sessionId) {
+    const rating = window.selectedRating;
+    const feedback = document.getElementById('ratingFeedback').value;
+    
+    if (!rating) {
+        alert('Please select a rating');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/chat/rate-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `session_id=${sessionId}&rating=${rating}&feedback=${encodeURIComponent(feedback)}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            document.querySelector('.rating-modal').remove();
+            displaySystemMessage('Thank you for your feedback!');
+        }
+    } catch (error) {
+        console.error('Error submitting rating:', error);
+    }
+}
+
+// Queue position updates
+function handleQueueUpdate(data) {
+    const queueInfo = document.getElementById('queueInfo');
+    if (queueInfo) {
+        queueInfo.innerHTML = `
+            <p>Position in queue: ${data.position}</p>
+            <p>Estimated wait time: ${Math.ceil(data.estimated_wait / 60)} minutes</p>
+        `;
+    }
+}
+
 // Initialize WebSocket on page load
 document.addEventListener('DOMContentLoaded', async function() {
     // Clear displayed messages on page load
@@ -631,5 +821,592 @@ document.addEventListener('DOMContentLoaded', async function() {
     const sessionActive = await checkSessionStatus();
     if (sessionActive) {
         initWebSocket();
+    }
+});
+
+// Enhanced WebSocket with reconnection and heartbeat
+class EnhancedWebSocket {
+    constructor(url) {
+        this.url = url;
+        this.ws = null;
+        this.reconnectAttempts = 0;
+        this.maxReconnectAttempts = 5;
+        this.reconnectInterval = 1000;
+        this.heartbeatInterval = null;
+        this.messageQueue = [];
+        this.connect();
+    }
+    
+    connect() {
+        try {
+            this.ws = new WebSocket(this.url);
+            this.setupEventHandlers();
+            this.updateConnectionStatus('connecting');
+        } catch (error) {
+            console.error('WebSocket connection failed:', error);
+            this.scheduleReconnect();
+        }
+    }
+    
+    setupEventHandlers() {
+        this.ws.onopen = () => {
+            console.log('WebSocket connected');
+            this.updateConnectionStatus('connected');
+            this.reconnectAttempts = 0;
+            this.startHeartbeat();
+            this.flushMessageQueue();
+            
+            if (this.onopen) this.onopen();
+        };
+        
+        this.ws.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            if (data.type === 'pong') {
+                return; // Heartbeat response
+            }
+            if (this.onmessage) this.onmessage(event);
+        };
+        
+        this.ws.onclose = () => {
+            console.log('WebSocket disconnected');
+            this.updateConnectionStatus('disconnected');
+            this.stopHeartbeat();
+            this.scheduleReconnect();
+            
+            if (this.onclose) this.onclose();
+        };
+        
+        this.ws.onerror = (error) => {
+            console.error('WebSocket error:', error);
+            if (this.onerror) this.onerror(error);
+        };
+    }
+    
+    send(data) {
+        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+            this.ws.send(data);
+        } else {
+            // Queue message for when connection is restored
+            this.messageQueue.push(data);
+        }
+    }
+    
+    scheduleReconnect() {
+        if (this.reconnectAttempts < this.maxReconnectAttempts) {
+            this.updateConnectionStatus('reconnecting');
+            setTimeout(() => {
+                this.reconnectAttempts++;
+                this.connect();
+            }, this.reconnectInterval * Math.pow(2, this.reconnectAttempts));
+        }
+    }
+    
+    startHeartbeat() {
+        this.heartbeatInterval = setInterval(() => {
+            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+                this.ws.send(JSON.stringify({ type: 'ping' }));
+            }
+        }, 30000); // 30 seconds
+    }
+    
+    stopHeartbeat() {
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+    
+    flushMessageQueue() {
+        while (this.messageQueue.length > 0) {
+            this.send(this.messageQueue.shift());
+        }
+    }
+    
+    updateConnectionStatus(status) {
+        const statusElement = document.getElementById('connectionStatus');
+        if (statusElement) {
+            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            statusElement.className = `status-indicator ${status}`;
+        }
+        
+        // Show connection notification
+        showConnectionNotification(status);
+    }
+    
+    close() {
+        this.stopHeartbeat();
+        if (this.ws) {
+            this.ws.close();
+        }
+    }
+}
+
+// File drag and drop functionality
+function initFileUpload() {
+    const chatInput = document.getElementById('messageInput');
+    const chatWindow = document.querySelector('.chat-window');
+    
+    if (!chatInput || !chatWindow) return;
+    
+    // Create drag overlay
+    const dragOverlay = document.createElement('div');
+    dragOverlay.className = 'drag-overlay';
+    dragOverlay.innerHTML = `
+        <div class="drag-content">
+            <div class="drag-icon">📁</div>
+            <p>Drop files here to send</p>
+        </div>
+    `;
+    chatWindow.appendChild(dragOverlay);
+    
+    // Drag and drop events
+    chatWindow.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        dragOverlay.classList.add('visible');
+    });
+    
+    chatWindow.addEventListener('dragleave', (e) => {
+        if (!chatWindow.contains(e.relatedTarget)) {
+            dragOverlay.classList.remove('visible');
+        }
+    });
+    
+    chatWindow.addEventListener('drop', (e) => {
+        e.preventDefault();
+        dragOverlay.classList.remove('visible');
+        
+        const files = Array.from(e.dataTransfer.files);
+        files.forEach(file => {
+            if (validateFile(file)) {
+                uploadFile(file, getCurrentSessionId());
+            }
+        });
+    });
+}
+
+function validateFile(file) {
+    const maxSize = 5 * 1024 * 1024; // 5MB
+    const allowedTypes = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+        'application/pdf', 'text/plain', 'application/msword',
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    ];
+    
+    if (file.size > maxSize) {
+        showNotification('File too large. Maximum size is 5MB.', 'error');
+        return false;
+    }
+    
+    if (!allowedTypes.includes(file.type)) {
+        showNotification('File type not allowed.', 'error');
+        return false;
+    }
+    
+    return true;
+}
+
+// Enhanced message display with read receipts
+function displayMessageEnhanced(data) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    const messageId = `msg_${data.id || Date.now()}`;
+    const messageDiv = document.createElement('div');
+    messageDiv.className = `message ${data.sender_type}`;
+    messageDiv.setAttribute('data-message-id', messageId);
+    
+    const bubble = document.createElement('div');
+    bubble.className = 'message-bubble';
+    
+    // Handle different message types
+    if (data.message_type === 'file') {
+        bubble.innerHTML = createFileMessageHTML(data.file_info);
+    } else {
+        bubble.textContent = data.message;
+    }
+    
+    const time = document.createElement('div');
+    time.className = 'message-time';
+    time.textContent = formatTime(data.timestamp);
+    
+    // Add read receipt for sent messages
+    if (data.sender_type === userType && userType !== 'system') {
+        const status = document.createElement('div');
+        status.className = 'message-status sent';
+        time.appendChild(status);
+    }
+    
+    bubble.appendChild(time);
+    messageDiv.appendChild(bubble);
+    container.appendChild(messageDiv);
+    
+    container.scrollTop = container.scrollHeight;
+    
+    // Mark message as delivered after a short delay
+    if (data.sender_type !== userType) {
+        setTimeout(() => markMessageAsRead(messageId), 1000);
+    }
+}
+
+function createFileMessageHTML(fileInfo) {
+    const fileIcon = getFileIcon(fileInfo.type);
+    return `
+        <div class="file-message">
+            <div class="file-icon">${fileIcon}</div>
+            <div class="file-info">
+                <div class="file-name">${fileInfo.name}</div>
+                <div class="file-size">${formatFileSize(fileInfo.size)}</div>
+            </div>
+            <a href="${fileInfo.url}" download="${fileInfo.name}" class="file-download">⬇️</a>
+        </div>
+    `;
+}
+
+function getFileIcon(mimeType) {
+    if (mimeType.startsWith('image/')) return '🖼️';
+    if (mimeType === 'application/pdf') return '📄';
+    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
+    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
+    return '📁';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Enhanced typing indicator with user names
+function handleTypingIndicatorEnhanced(data) {
+    const container = document.getElementById('messagesContainer');
+    const indicator = document.getElementById('typingIndicator');
+    
+    if (!container || !indicator) return;
+    
+    if (data.is_typing && data.user_type !== userType) {
+        const userName = data.user_name || (data.user_type === 'agent' ? 'Agent' : 'Customer');
+        indicator.innerHTML = `
+            <div class="typing-indicator-enhanced">
+                <span>${userName} is typing</span>
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+        `;
+        indicator.style.display = 'block';
+        container.scrollTop = container.scrollHeight;
+    } else {
+        indicator.style.display = 'none';
+    }
+}
+
+// Customer information panel
+function initCustomerInfoPanel() {
+    const chatPanel = document.querySelector('.chat-panel');
+    if (!chatPanel) return;
+    
+    const infoPanel = document.createElement('div');
+    infoPanel.className = 'customer-info-panel';
+    infoPanel.id = 'customerInfoPanel';
+    
+    chatPanel.appendChild(infoPanel);
+    
+    // Add toggle button to chat header
+    const chatHeader = document.querySelector('.chat-header');
+    if (chatHeader) {
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'btn btn-info-toggle';
+        toggleBtn.innerHTML = 'ℹ️';
+        toggleBtn.onclick = toggleCustomerInfo;
+        chatHeader.appendChild(toggleBtn);
+    }
+}
+
+function toggleCustomerInfo() {
+    const panel = document.getElementById('customerInfoPanel');
+    if (panel) {
+        panel.classList.toggle('visible');
+        if (panel.classList.contains('visible') && currentSessionId) {
+            loadCustomerInfo(currentSessionId);
+        }
+    }
+}
+
+async function loadCustomerInfo(sessionId) {
+    try {
+        const response = await fetch(`/api/customer-info/${sessionId}`);
+        const data = await response.json();
+        
+        displayCustomerInfo(data);
+    } catch (error) {
+        console.error('Error loading customer info:', error);
+    }
+}
+
+function displayCustomerInfo(data) {
+    const panel = document.getElementById('customerInfoPanel');
+    if (!panel) return;
+    
+    const initials = data.customer.name.split(' ').map(n => n[0]).join('').toUpperCase();
+    
+    panel.innerHTML = `
+        <div class="customer-avatar">${initials}</div>
+        <div class="customer-details">
+            <h4>${data.customer.name}</h4>
+            ${data.customer.email ? `<p><strong>Email:</strong> ${data.customer.email}</p>` : ''}
+            ${data.customer.phone ? `<p><strong>Phone:</strong> ${data.customer.phone}</p>` : ''}
+            ${data.customer.company ? `<p><strong>Company:</strong> ${data.customer.company}</p>` : ''}
+            <p><strong>Total Chats:</strong> ${data.customer.total_chats || 0}</p>
+            ${data.customer.last_chat_at ? `<p><strong>Last Chat:</strong> ${formatDate(data.customer.last_chat_at)}</p>` : ''}
+        </div>
+        
+        <div class="chat-history">
+            <h5>Recent Chats</h5>
+            ${data.history.map(chat => `
+                <div class="history-item">
+                    <div class="history-date">${formatDate(chat.created_at)}</div>
+                    <div class="history-agent">Agent: ${chat.agent_name || 'Unassigned'}</div>
+                    <div>Status: ${chat.status}</div>
+                    ${chat.rating ? `<div>Rating: ${'★'.repeat(chat.rating)}</div>` : ''}
+                </div>
+            `).join('')}
+        </div>
+        
+        <div class="customer-notes">
+            <h5>Notes</h5>
+            <textarea id="customerNotes" placeholder="Add notes about this customer...">${data.customer.notes || ''}</textarea>
+            <button onclick="saveCustomerNotes()" class="btn btn-primary btn-sm">Save Notes</button>
+        </div>
+    `;
+}
+
+async function saveCustomerNotes() {
+    const notes = document.getElementById('customerNotes').value;
+    const sessionId = currentSessionId;
+    
+    try {
+        const response = await fetch('/api/customer-notes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `session_id=${sessionId}&notes=${encodeURIComponent(notes)}`
+        });
+        
+        if (response.ok) {
+            showNotification('Notes saved successfully', 'success');
+        }
+    } catch (error) {
+        console.error('Error saving notes:', error);
+        showNotification('Failed to save notes', 'error');
+    }
+}
+
+// Notification system
+function showNotification(message, type = 'info', duration = 3000) {
+    const notification = document.createElement('div');
+    notification.className = `notification ${type}`;
+    notification.textContent = message;
+    
+    // Position notification
+    notification.style.cssText = `
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        padding: 12px 24px;
+        border-radius: 6px;
+        color: white;
+        font-weight: 500;
+        z-index: 10000;
+        opacity: 0;
+        transform: translateX(100%);
+        transition: all 0.3s ease;
+    `;
+    
+    // Set background color based on type
+    const colors = {
+        success: '#28a745',
+        error: '#dc3545',
+        warning: '#ffc107',
+        info: '#17a2b8'
+    };
+    
+    notification.style.backgroundColor = colors[type] || colors.info;
+    
+    document.body.appendChild(notification);
+    
+    // Animate in
+    setTimeout(() => {
+        notification.style.opacity = '1';
+        notification.style.transform = 'translateX(0)';
+    }, 100);
+    
+    // Auto remove
+    setTimeout(() => {
+        notification.style.opacity = '0';
+        notification.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+            if (notification.parentNode) {
+                notification.parentNode.removeChild(notification);
+            }
+        }, 300);
+    }, duration);
+}
+
+function showConnectionNotification(status) {
+    const messages = {
+        connecting: 'Connecting to chat server...',
+        connected: 'Connected to chat server',
+        disconnected: 'Disconnected from chat server',
+        reconnecting: 'Reconnecting...'
+    };
+    
+    const types = {
+        connecting: 'info',
+        connected: 'success',
+        disconnected: 'error',
+        reconnecting: 'warning'
+    };
+    
+    if (messages[status]) {
+        showNotification(messages[status], types[status], 2000);
+    }
+}
+
+// Utility functions
+function getCurrentSessionId() {
+    return currentSessionId || sessionId;
+}
+
+function formatDate(dateString) {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
+}
+
+function markMessageAsRead(messageId) {
+    // Send read receipt via WebSocket
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'message_read',
+            message_id: messageId,
+            session_id: getCurrentSessionId()
+        }));
+    }
+}
+
+function updateMessageStatus(messageId, status) {
+    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
+    if (messageElement) {
+        const statusElement = messageElement.querySelector('.message-status');
+        if (statusElement) {
+            statusElement.className = `message-status ${status}`;
+        }
+    }
+}
+
+// Quick actions for common responses
+function initQuickActions() {
+    const chatInputArea = document.querySelector('.chat-input-area');
+    if (!chatInputArea || userType !== 'agent') return;
+    
+    const quickActions = document.createElement('div');
+    quickActions.className = 'quick-actions';
+    quickActions.innerHTML = `
+        <button class="quick-action-btn" onclick="sendQuickResponse('greeting')">👋 Greeting</button>
+        <button class="quick-action-btn" onclick="sendQuickResponse('please_wait')">⏳ Please Wait</button>
+        <button class="quick-action-btn" onclick="sendQuickResponse('thank_you')">🙏 Thank You</button>
+        <button class="quick-action-btn" onclick="handleFileUpload(getCurrentSessionId())">📎 File</button>
+    `;
+    
+    chatInputArea.insertBefore(quickActions, chatInputArea.firstChild);
+}
+
+async function sendQuickResponse(type) {
+    const responses = {
+        greeting: "Hello! How can I help you today?",
+        please_wait: "Thank you for your patience. Let me look into this for you.",
+        thank_you: "Thank you for contacting us. Have a great day!"
+    };
+    
+    const message = responses[type];
+    if (message && getCurrentSessionId()) {
+        // Send via WebSocket
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'message',
+                session_id: getCurrentSessionId(),
+                message: message,
+                sender_type: userType,
+                sender_id: userId
+            }));
+        }
+    }
+}
+
+// Initialize all enhanced features
+document.addEventListener('DOMContentLoaded', function() {
+    // Initialize enhanced WebSocket if original fails
+    if (typeof initWebSocket === 'function') {
+        const originalInit = initWebSocket;
+        initWebSocket = function() {
+            try {
+                originalInit();
+            } catch (error) {
+                console.log('Falling back to enhanced WebSocket');
+                ws = new EnhancedWebSocket('ws://localhost:8081');
+                ws.onopen = function() {
+                    console.log('Enhanced WebSocket connected');
+                    // Register connection as before
+                };
+                ws.onmessage = function(event) {
+                    const data = JSON.parse(event.data);
+                    handleWebSocketMessage(data);
+                };
+            }
+        };
+    }
+    
+    // Initialize all enhanced features
+    setTimeout(() => {
+        initFileUpload();
+        initCustomerInfoPanel();
+        initQuickActions();
+    }, 1000);
+});
+
+// Handle page visibility change for connection management
+document.addEventListener('visibilitychange', function() {
+    if (document.hidden) {
+        // Page is hidden, reduce connection activity
+        if (ws && typeof ws.stopHeartbeat === 'function') {
+            ws.stopHeartbeat();
+        }
+    } else {
+        // Page is visible, resume full activity
+        if (ws && typeof ws.startHeartbeat === 'function') {
+            ws.startHeartbeat();
+        }
+    }
+});
+
+// Handle browser back/forward buttons
+window.addEventListener('popstate', function(event) {
+    // Handle navigation state if needed
+    if (currentSessionId && event.state && event.state.sessionId !== currentSessionId) {
+        // Session changed, update UI accordingly
+        currentSessionId = event.state.sessionId;
+        if (currentSessionId) {
+            loadChatHistoryForSession(currentSessionId);
+        }
     }
 });
