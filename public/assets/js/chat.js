@@ -114,13 +114,9 @@ function handleWebSocketMessage(data) {
             refreshAdminSessions();
             break;
 
-        case 'queue_update':
-            handleQueueUpdate(data);
-            break;
+
             
-        case 'file_uploaded':
-            displayFileMessage(data.file_info);
-            break;
+
             
         case 'system_message':
             displaySystemMessage(data.message);
@@ -295,6 +291,8 @@ function displaySystemMessage(message) {
     
     container.scrollTop = container.scrollHeight;
 }
+
+
 
 // Load chat history
 async function loadChatHistory() {
@@ -637,56 +635,7 @@ async function checkSessionStatus() {
     return true; // No session ID or not customer
 }
 
-// File upload handling
-function handleFileUpload(sessionId) {
-    const fileInput = document.createElement('input');
-    fileInput.type = 'file';
-    fileInput.accept = 'image/*,.pdf,.txt,.doc,.docx';
-    
-    fileInput.onchange = function(e) {
-        const file = e.target.files[0];
-        if (file) {
-            uploadFile(file, sessionId);
-        }
-    };
-    
-    fileInput.click();
-}
 
-async function uploadFile(file, sessionId) {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('session_id', sessionId);
-    
-    try {
-        const response = await fetch('/chat/upload-file', {
-            method: 'POST',
-            body: formData
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            // Send file message through WebSocket
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'file_upload',
-                    session_id: sessionId,
-                    file_info: {
-                        name: result.file_name,
-                        url: result.file_url,
-                        id: result.file_id
-                    }
-                }));
-            }
-        } else {
-            alert('File upload failed: ' + result.error);
-        }
-    } catch (error) {
-        console.error('File upload error:', error);
-        alert('File upload failed. Please try again.');
-    }
-}
 
 // Canned responses
 function showCannedResponses() {
@@ -724,19 +673,21 @@ function displayCannedResponsesModal(responses) {
 
 async function sendCannedResponse(responseId) {
     try {
-        const response = await fetch('/chat/canned-response', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `session_id=${currentSessionId}&response_id=${responseId}`
-        });
+        // First get the response content
+        const response = await fetch(`/admin/canned-responses/get/${responseId}`);
+        const responseData = await response.json();
         
-        const result = await response.json();
-        
-        if (result.success) {
-            // Message will be sent via WebSocket automatically
-            document.querySelector('.canned-responses-modal')?.remove();
+        if (responseData.content) {
+            // Send the message through WebSocket
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'message',
+                    session_id: currentSessionId || sessionId,
+                    message: responseData.content,
+                    sender_type: userType,
+                    sender_id: typeof userId !== 'undefined' ? userId : null
+                }));
+            }
         }
     } catch (error) {
         console.error('Error sending canned response:', error);
@@ -802,16 +753,7 @@ async function submitRating(sessionId) {
     }
 }
 
-// Queue position updates
-function handleQueueUpdate(data) {
-    const queueInfo = document.getElementById('queueInfo');
-    if (queueInfo) {
-        queueInfo.innerHTML = `
-            <p>Position in queue: ${data.position}</p>
-            <p>Estimated wait time: ${Math.ceil(data.estimated_wait / 60)} minutes</p>
-        `;
-    }
-}
+
 
 // Initialize WebSocket on page load
 document.addEventListener('DOMContentLoaded', async function() {
@@ -941,69 +883,7 @@ class EnhancedWebSocket {
     }
 }
 
-// File drag and drop functionality
-function initFileUpload() {
-    const chatInput = document.getElementById('messageInput');
-    const chatWindow = document.querySelector('.chat-window');
-    
-    if (!chatInput || !chatWindow) return;
-    
-    // Create drag overlay
-    const dragOverlay = document.createElement('div');
-    dragOverlay.className = 'drag-overlay';
-    dragOverlay.innerHTML = `
-        <div class="drag-content">
-            <div class="drag-icon">📁</div>
-            <p>Drop files here to send</p>
-        </div>
-    `;
-    chatWindow.appendChild(dragOverlay);
-    
-    // Drag and drop events
-    chatWindow.addEventListener('dragover', (e) => {
-        e.preventDefault();
-        dragOverlay.classList.add('visible');
-    });
-    
-    chatWindow.addEventListener('dragleave', (e) => {
-        if (!chatWindow.contains(e.relatedTarget)) {
-            dragOverlay.classList.remove('visible');
-        }
-    });
-    
-    chatWindow.addEventListener('drop', (e) => {
-        e.preventDefault();
-        dragOverlay.classList.remove('visible');
-        
-        const files = Array.from(e.dataTransfer.files);
-        files.forEach(file => {
-            if (validateFile(file)) {
-                uploadFile(file, getCurrentSessionId());
-            }
-        });
-    });
-}
 
-function validateFile(file) {
-    const maxSize = 5 * 1024 * 1024; // 5MB
-    const allowedTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/pdf', 'text/plain', 'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-    
-    if (file.size > maxSize) {
-        showNotification('File too large. Maximum size is 5MB.', 'error');
-        return false;
-    }
-    
-    if (!allowedTypes.includes(file.type)) {
-        showNotification('File type not allowed.', 'error');
-        return false;
-    }
-    
-    return true;
-}
 
 // Enhanced message display with read receipts
 function displayMessageEnhanced(data) {
@@ -1018,12 +898,7 @@ function displayMessageEnhanced(data) {
     const bubble = document.createElement('div');
     bubble.className = 'message-bubble';
     
-    // Handle different message types
-    if (data.message_type === 'file') {
-        bubble.innerHTML = createFileMessageHTML(data.file_info);
-    } else {
-        bubble.textContent = data.message;
-    }
+    bubble.textContent = data.message;
     
     const time = document.createElement('div');
     time.className = 'message-time';
@@ -1048,35 +923,7 @@ function displayMessageEnhanced(data) {
     }
 }
 
-function createFileMessageHTML(fileInfo) {
-    const fileIcon = getFileIcon(fileInfo.type);
-    return `
-        <div class="file-message">
-            <div class="file-icon">${fileIcon}</div>
-            <div class="file-info">
-                <div class="file-name">${fileInfo.name}</div>
-                <div class="file-size">${formatFileSize(fileInfo.size)}</div>
-            </div>
-            <a href="${fileInfo.url}" download="${fileInfo.name}" class="file-download">⬇️</a>
-        </div>
-    `;
-}
 
-function getFileIcon(mimeType) {
-    if (mimeType.startsWith('image/')) return '🖼️';
-    if (mimeType === 'application/pdf') return '📄';
-    if (mimeType.includes('word') || mimeType.includes('document')) return '📝';
-    if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return '📊';
-    return '📁';
-}
-
-function formatFileSize(bytes) {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-}
 
 // Enhanced typing indicator with user names
 function handleTypingIndicatorEnhanced(data) {
@@ -1105,106 +952,7 @@ function handleTypingIndicatorEnhanced(data) {
 }
 
 // Customer information panel
-function initCustomerInfoPanel() {
-    const chatPanel = document.querySelector('.chat-panel');
-    if (!chatPanel) return;
-    
-    const infoPanel = document.createElement('div');
-    infoPanel.className = 'customer-info-panel';
-    infoPanel.id = 'customerInfoPanel';
-    
-    chatPanel.appendChild(infoPanel);
-    
-    // Add toggle button to chat header
-    const chatHeader = document.querySelector('.chat-header');
-    if (chatHeader) {
-        const toggleBtn = document.createElement('button');
-        toggleBtn.className = 'btn btn-info-toggle';
-        toggleBtn.innerHTML = 'ℹ️';
-        toggleBtn.onclick = toggleCustomerInfo;
-        chatHeader.appendChild(toggleBtn);
-    }
-}
 
-function toggleCustomerInfo() {
-    const panel = document.getElementById('customerInfoPanel');
-    if (panel) {
-        panel.classList.toggle('visible');
-        if (panel.classList.contains('visible') && currentSessionId) {
-            loadCustomerInfo(currentSessionId);
-        }
-    }
-}
-
-async function loadCustomerInfo(sessionId) {
-    try {
-        const response = await fetch(`/api/customer-info/${sessionId}`);
-        const data = await response.json();
-        
-        displayCustomerInfo(data);
-    } catch (error) {
-        console.error('Error loading customer info:', error);
-    }
-}
-
-function displayCustomerInfo(data) {
-    const panel = document.getElementById('customerInfoPanel');
-    if (!panel) return;
-    
-    const initials = data.customer.name.split(' ').map(n => n[0]).join('').toUpperCase();
-    
-    panel.innerHTML = `
-        <div class="customer-avatar">${initials}</div>
-        <div class="customer-details">
-            <h4>${data.customer.name}</h4>
-            ${data.customer.email ? `<p><strong>Email:</strong> ${data.customer.email}</p>` : ''}
-            ${data.customer.phone ? `<p><strong>Phone:</strong> ${data.customer.phone}</p>` : ''}
-            ${data.customer.company ? `<p><strong>Company:</strong> ${data.customer.company}</p>` : ''}
-            <p><strong>Total Chats:</strong> ${data.customer.total_chats || 0}</p>
-            ${data.customer.last_chat_at ? `<p><strong>Last Chat:</strong> ${formatDate(data.customer.last_chat_at)}</p>` : ''}
-        </div>
-        
-        <div class="chat-history">
-            <h5>Recent Chats</h5>
-            ${data.history.map(chat => `
-                <div class="history-item">
-                    <div class="history-date">${formatDate(chat.created_at)}</div>
-                    <div class="history-agent">Agent: ${chat.agent_name || 'Unassigned'}</div>
-                    <div>Status: ${chat.status}</div>
-                    ${chat.rating ? `<div>Rating: ${'★'.repeat(chat.rating)}</div>` : ''}
-                </div>
-            `).join('')}
-        </div>
-        
-        <div class="customer-notes">
-            <h5>Notes</h5>
-            <textarea id="customerNotes" placeholder="Add notes about this customer...">${data.customer.notes || ''}</textarea>
-            <button onclick="saveCustomerNotes()" class="btn btn-primary btn-sm">Save Notes</button>
-        </div>
-    `;
-}
-
-async function saveCustomerNotes() {
-    const notes = document.getElementById('customerNotes').value;
-    const sessionId = currentSessionId;
-    
-    try {
-        const response = await fetch('/api/customer-notes', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `session_id=${sessionId}&notes=${encodeURIComponent(notes)}`
-        });
-        
-        if (response.ok) {
-            showNotification('Notes saved successfully', 'success');
-        }
-    } catch (error) {
-        console.error('Error saving notes:', error);
-        showNotification('Failed to save notes', 'error');
-    }
-}
 
 // Notification system
 function showNotification(message, type = 'info', duration = 3000) {
@@ -1321,12 +1069,23 @@ function initQuickActions() {
     
     const quickActions = document.createElement('div');
     quickActions.className = 'quick-actions';
-    quickActions.innerHTML = `
-        <button class="quick-action-btn" onclick="sendQuickResponse('greeting')">👋 Greeting</button>
-        <button class="quick-action-btn" onclick="sendQuickResponse('please_wait')">⏳ Please Wait</button>
-        <button class="quick-action-btn" onclick="sendQuickResponse('thank_you')">🙏 Thank You</button>
-        <button class="quick-action-btn" onclick="handleFileUpload(getCurrentSessionId())">📎 File</button>
-    `;
+    // Load canned responses from database
+    fetch('/admin/canned-responses/get-all')
+        .then(response => response.json())
+        .then(responses => {
+            quickActions.innerHTML = responses.map(response => 
+                `<button class="quick-action-btn" onclick="sendCannedResponse(${response.id})">${response.title}</button>`
+            ).join('');
+        })
+        .catch(error => {
+            console.error('Error loading canned responses:', error);
+            // Fallback to default responses
+            quickActions.innerHTML = `
+                <button class="quick-action-btn" onclick="sendQuickResponse('greeting')">👋 Greeting</button>
+                <button class="quick-action-btn" onclick="sendQuickResponse('please_wait')">⏳ Please Wait</button>
+                <button class="quick-action-btn" onclick="sendQuickResponse('thank_you')">🙏 Thank You</button>
+            `;
+        });
     
     chatInputArea.insertBefore(quickActions, chatInputArea.firstChild);
 }
@@ -1378,8 +1137,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Initialize all enhanced features
     setTimeout(() => {
-        initFileUpload();
-        initCustomerInfoPanel();
+
         initQuickActions();
     }, 1000);
 });

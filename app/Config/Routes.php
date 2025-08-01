@@ -9,9 +9,7 @@ use CodeIgniter\Router\RouteCollection;
 // Home route - redirect to chat
 $routes->get('/', 'ChatController::index');
 
-// File upload routes
-$routes->post('/chat/upload-file', 'ChatController::uploadFile');
-$routes->get('/chat/download/(:segment)', 'ChatController::downloadFile/$1');
+
 
 // Chat routes (Customer side)
 $routes->get('/chat', 'ChatController::index');
@@ -21,7 +19,6 @@ $routes->get('/chat/messages/(:segment)', 'ChatController::getMessages/$1');
 $routes->post('/chat/close-session', 'ChatController::closeSession');
 $routes->get('/chat/check-session-status/(:segment)', 'ChatController::checkSessionStatus/$1');
 $routes->post('/chat/rate-session', 'ChatController::rateSession');
-$routes->get('/chat/queue-position/(:segment)', 'ChatController::getQueuePosition/$1');
 $routes->post('/chat/canned-response', 'ChatController::sendCannedResponse');
 $routes->get('/chat/customer-history/(:segment)', 'ChatController::getCustomerHistory/$1');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
@@ -34,12 +31,15 @@ $routes->group('admin', ['filter' => 'authfilter'], function($routes) {
     $routes->get('chat', 'AdminController::chat');
     $routes->get('agents', 'AdminController::agents');
     $routes->post('agents/edit', 'AdminController::editAgent');
+    $routes->post('agents/add', 'AdminController::addAgent');
     $routes->post('agents/delete', 'AdminController::deleteAgent');
     $routes->get('reports', 'AdminController::reports');
     $routes->get('analytics', 'AdminController::analytics');
     $routes->get('canned-responses', 'AdminController::cannedResponses');
+    $routes->get('canned-responses/get/(:segment)', 'AdminController::getCannedResponse/$1');
+    $routes->get('canned-responses/get-all', 'AdminController::getAllCannedResponses');
     $routes->post('canned-responses/save', 'AdminController::saveCannedResponse');
-    $routes->delete('canned-responses/(:segment)', 'AdminController::deleteCannedResponse/$1');
+    $routes->post('canned-responses/delete', 'AdminController::deleteCannedResponse');
     $routes->get('settings', 'AdminController::settings');
     $routes->post('settings/save', 'AdminController::saveSettings');
     $routes->get('customers', 'AdminController::customers');

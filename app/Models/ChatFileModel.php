@@ -8,7 +8,7 @@ class ChatFileModel extends Model
 {
     protected $table = 'chat_files';
     protected $primaryKey = 'id';
-    protected $allowedFields = ['message_id', 'original_name', 'file_path', 'file_size', 'mime_type'];
+    protected $allowedFields = ['message_id', 'session_id', 'original_name', 'file_path', 'file_size', 'mime_type', 'uploaded_at'];
     
     public function getMessageFiles($messageId)
     {
@@ -17,11 +17,8 @@ class ChatFileModel extends Model
     
     public function getSessionFiles($sessionId)
     {
-        return $this->select('chat_files.*, messages.created_at as uploaded_at')
-                    ->join('messages', 'messages.id = chat_files.message_id')
-                    ->join('chat_sessions', 'chat_sessions.id = messages.session_id')
-                    ->where('chat_sessions.session_id', $sessionId)
-                    ->orderBy('messages.created_at', 'DESC')
+        return $this->where('session_id', $sessionId)
+                    ->orderBy('uploaded_at', 'DESC')
                     ->findAll();
     }
     

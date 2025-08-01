@@ -41,7 +41,7 @@ abstract class BaseController extends Controller
     protected $chatModel;
     protected $userModel;
     protected $messageModel;
-    protected $chatQueueModel;
+
     protected $cannedResponseModel;
     protected $chatFileModel;
     protected $chatAnalyticsModel;
@@ -70,6 +70,7 @@ abstract class BaseController extends Controller
         $this->userModel = new \App\Models\UserModel();
         $this->messageModel = new \App\Models\MessageModel();
         $this->chatFileModel = new \App\Models\ChatFileModel();
+        $this->cannedResponseModel = new \App\Models\CannedResponseModel();
     }
     
     protected function jsonResponse($data, $statusCode = 200)

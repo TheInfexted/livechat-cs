@@ -87,6 +87,8 @@ class ChatServer implements MessageComponentInterface
             case 'close_session':
                 $this->handleSessionClose($from, $data);
                 break;
+                
+
         }
     }
     
@@ -342,70 +344,11 @@ class ChatServer implements MessageComponentInterface
         $conn->close();
     }
 
-    protected function handleFileUpload($from, $data)
-    {
-        // Handle file upload notifications through WebSocket
-        $sessionId = $data['session_id'];
-        $fileInfo = $data['file_info'];
-        
-        $response = [
-            'type' => 'file_uploaded',
-            'session_id' => $sessionId,
-            'file_info' => $fileInfo
-        ];
-        
-        // Send to all connections in this session
-        if (isset($this->sessions[$sessionId])) {
-            foreach ($this->sessions[$sessionId] as $client) {
-                $client['connection']->send(json_encode($response));
-            }
-        }
-    }
+
     
 
     
-    protected function handleQueueUpdate($sessionId)
-    {
-        // Update queue positions when someone leaves/joins
-        $this->ensureDatabaseConnection();
-        if (!$this->pdo) return;
-        
-        // Recalculate queue positions
-        $stmt = $this->pdo->prepare("
-            SELECT cq.session_id, cs.customer_name 
-            FROM chat_queue cq
-            JOIN chat_sessions cs ON cs.session_id = cq.session_id
-            ORDER BY cq.priority DESC, cq.created_at ASC
-        ");
-        $stmt->execute();
-        $queue = $stmt->fetchAll();
-        
-        foreach ($queue as $index => $item) {
-            $position = $index + 1;
-            $estimatedWait = $position * 5; // 5 minutes per position
-            
-            // Update database
-            $updateStmt = $this->pdo->prepare("
-                UPDATE chat_queue 
-                SET queue_position = ?, estimated_wait_time = ? 
-                WHERE session_id = ?
-            ");
-            $updateStmt->execute([$position, $estimatedWait, $item['session_id']]);
-            
-            // Notify customer
-            if (isset($this->sessions[$item['session_id']])) {
-                foreach ($this->sessions[$item['session_id']] as $client) {
-                    if ($client['type'] === 'customer') {
-                        $client['connection']->send(json_encode([
-                            'type' => 'queue_update',
-                            'position' => $position,
-                            'estimated_wait' => $estimatedWait
-                        ]));
-                    }
-                }
-            }
-        }
-    }
+
     
     protected function handleBulkMessage($from, $data)
     {

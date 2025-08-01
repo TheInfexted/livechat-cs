@@ -16,24 +16,20 @@ class ChatMaintenance extends BaseCommand
     protected $options = [
         '--cleanup' => 'Clean up old sessions and files',
         '--analytics' => 'Update analytics data',
-        '--queue' => 'Process queue maintenance'
+
     ];
     
     public function run(array $params)
     {
         $cleanup = CLI::getOption('cleanup');
         $analytics = CLI::getOption('analytics');
-        $queue = CLI::getOption('queue');
-        
-        if (!$cleanup && !$analytics && !$queue) {
+        if (!$cleanup && !$analytics) {
             // Run all maintenance tasks
             $this->cleanupOldSessions();
             $this->updateAnalytics();
-            $this->processQueueMaintenance();
         } else {
             if ($cleanup) $this->cleanupOldSessions();
             if ($analytics) $this->updateAnalytics();
-            if ($queue) $this->processQueueMaintenance();
         }
         
         CLI::write('Chat maintenance completed successfully!', 'green');
@@ -99,42 +95,5 @@ class ChatMaintenance extends BaseCommand
 
     }
     
-    private function processQueueMaintenance()
-    {
-        CLI::write('Processing queue maintenance...', 'yellow');
-        
-        $queueModel = new \App\Models\ChatQueueModel();
-        $chatModel = new \App\Models\ChatModel();
-        
-        // Remove queue items for closed/active sessions
-        $invalidQueueItems = $queueModel->select('chat_queue.id, chat_queue.session_id')
-                                       ->join('chat_sessions', 'chat_sessions.session_id = chat_queue.session_id')
-                                       ->where('chat_sessions.status !=', 'waiting')
-                                       ->findAll();
-        
-        $cleaned = 0;
-        foreach ($invalidQueueItems as $item) {
-            $queueModel->delete($item['id']);
-            $cleaned++;
-        }
-        
-        CLI::write("Cleaned {$cleaned} invalid queue items", 'green');
-        
-        // Reorder queue to fix any position inconsistencies
-        $queue = $queueModel->orderBy('priority', 'DESC')
-                           ->orderBy('created_at', 'ASC')
-                           ->findAll();
-        
-        foreach ($queue as $index => $item) {
-            $newPosition = $index + 1;
-            if ($item['queue_position'] != $newPosition) {
-                $queueModel->update($item['id'], [
-                    'queue_position' => $newPosition,
-                    'estimated_wait_time' => $newPosition * 300 // 5 minutes per position
-                ]);
-            }
-        }
-        
-        CLI::write("Reordered queue with " . count($queue) . " items", 'green');
-    }
+
 }

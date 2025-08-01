@@ -7,19 +7,9 @@ use CodeIgniter\Config\BaseConfig;
 
 class Chat extends BaseConfig
 {
-    // File upload settings
-    public int $maxFileSize = 5242880; // 5MB in bytes
-    public array $allowedFileTypes = [
-        'image/jpeg', 'image/png', 'image/gif', 'image/webp',
-        'application/pdf', 'text/plain', 'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-    ];
-    public string $uploadPath = 'uploads/chat/';
+
     
-    // Queue settings
-    public int $maxQueueSize = 100;
-    public int $estimatedWaitPerPosition = 300; // 5 minutes in seconds
-    public bool $enableQueuePriority = true;
+
     
     // Session settings
     public int $sessionTimeout = 1800; // 30 minutes
