@@ -2,7 +2,36 @@ let ws = null;
 let reconnectInterval = null;
 let typingTimer = null;
 let isTyping = false;
-let displayedMessages = new Set(); // Track displayed messages to prevent duplicates
+let displayedMessages = new Set(); 
+let messageQueue = []; 
+let lastMessageTime = 0; 
+const MESSAGE_RATE_LIMIT = 1000;
+
+// Global session variables (will be set by view files)
+// Note: sessionId, userType, and userId are declared in view files
+let currentSessionId = null;
+
+// Helper function to safely get DOM elements
+function safeGetElement(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+        console.log(`Element with id '${id}' not found`);
+    }
+    return element;
+}
+
+// Helper function to safely get session variables
+function getSessionId() {
+    return typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+}
+
+function getUserType() {
+    return typeof userType !== 'undefined' ? userType : null;
+}
+
+function getUserId() {
+    return typeof userId !== 'undefined' ? userId : null;
+} 
 
 // Initialize WebSocket connection
 function initWebSocket() {
@@ -10,24 +39,42 @@ function initWebSocket() {
     
     ws.onopen = function() {
         console.log('Connected to chat server');
-        document.getElementById('connectionStatus').textContent = 'Online';
-        document.getElementById('connectionStatus').classList.add('online');
+        const connectionStatus = safeGetElement('connectionStatus');
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Online';
+            connectionStatus.classList.add('online');
+        }
         
         // Register connection
-        if (typeof userType !== 'undefined') {
+        const currentUserType = getUserType();
+        if (currentUserType) {
+            const currentSession = getSessionId();
+            const currentUserId = getUserId();
             const registerData = {
                 type: 'register',
-                session_id: sessionId || null,
-                user_type: userType,
-                user_id: typeof userId !== 'undefined' ? userId : null
+                session_id: currentSession || null,
+                user_type: currentUserType,
+                user_id: currentUserId
             };
+            console.log('Registering WebSocket connection:', registerData);
             ws.send(JSON.stringify(registerData));
+        } else {
+            console.log('No user type available for WebSocket registration');
         }
         
         // Clear reconnect interval
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
+        }
+        
+        // Process queued messages
+        if (messageQueue.length > 0) {
+            messageQueue.forEach(msg => {
+                ws.send(JSON.stringify(msg));
+            });
+            messageQueue = [];
+            showNotification('Queued messages sent', 'success', 2000);
         }
         
         // For admin, set up periodic refresh of sessions
@@ -43,8 +90,11 @@ function initWebSocket() {
     
     ws.onclose = function() {
         console.log('Disconnected from chat server');
-        document.getElementById('connectionStatus').textContent = 'Offline';
-        document.getElementById('connectionStatus').classList.remove('online');
+        const connectionStatus = safeGetElement('connectionStatus');
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Offline';
+            connectionStatus.classList.remove('online');
+        }
         
         // Attempt to reconnect
         if (!reconnectInterval) {
@@ -65,7 +115,9 @@ function handleWebSocketMessage(data) {
     switch (data.type) {
         case 'connected':
             console.log(data.message);
-            if (sessionId && userType === 'customer') {
+            const connectedSession = getSessionId();
+            const connectedUserType = getUserType();
+            if (connectedSession && connectedUserType === 'customer') {
                 loadChatHistory();
             }
             break;
@@ -79,11 +131,14 @@ function handleWebSocketMessage(data) {
             console.log('Message content:', data.message);
             
             // Check if this message belongs to the currently open chat (for admin)
-            if (userType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
+            const messageUserType = getUserType();
+            const messageSession = getSessionId();
+            
+            if (messageUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
                 console.log('Displaying message for admin');
                 displayMessage(data);
                 playNotificationSound();
-            } else if (userType === 'customer' && sessionId && data.session_id === sessionId) {
+            } else if (messageUserType === 'customer' && messageSession && data.session_id === messageSession) {
                 console.log('Displaying message for customer');
                 displayMessage(data);
                 playNotificationSound();
@@ -142,8 +197,40 @@ if (document.getElementById('startChatForm')) {
             const result = await response.json();
             
             if (result.success) {
+                console.log('Chat started successfully:', result);
                 sessionId = result.session_id;
-                location.reload(); // Reload to show chat interface
+                currentSessionId = result.session_id;
+                
+                // Update the page to show chat interface without reload
+                const chatInterface = document.getElementById('chatInterface');
+                if (chatInterface) {
+                    chatInterface.innerHTML = `
+                        <div class="chat-window" data-session-id="${result.session_id}">
+                            <div class="messages-container" id="messagesContainer">
+                                <div class="message system">
+                                    <p>Connecting to support...</p>
+                                </div>
+                            </div>
+                            
+                            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            
+                            <div class="chat-input-area">
+                                <form id="messageForm">
+                                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                                    <button type="submit" class="btn btn-send">Send</button>
+                                </form>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Re-initialize WebSocket and message form
+                    initWebSocket();
+                    initializeMessageForm();
+                }
             } else {
                 alert(result.error || 'Failed to start chat');
             }
@@ -154,9 +241,11 @@ if (document.getElementById('startChatForm')) {
     });
 }
 
-// Message form handler
-if (document.getElementById('messageForm')) {
-    document.getElementById('messageForm').addEventListener('submit', function(e) {
+// Initialize message form handler
+function initializeMessageForm() {
+    const messageForm = document.getElementById('messageForm');
+    if (messageForm) {
+        messageForm.addEventListener('submit', function(e) {
         e.preventDefault();
         
         const messageInput = document.getElementById('messageInput');
@@ -167,10 +256,18 @@ if (document.getElementById('messageForm')) {
             return; // Don't send if chat is closed
         }
         
+        // Rate limiting
+        const now = Date.now();
+        if (now - lastMessageTime < MESSAGE_RATE_LIMIT) {
+            showNotification('Please wait before sending another message', 'warning', 2000);
+            return;
+        }
+        
         if (message && ws && ws.readyState === WebSocket.OPEN) {
+            const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
             const messageData = {
                 type: 'message',
-                session_id: currentSessionId || sessionId,
+                session_id: currentSession,
                 message: message,
                 sender_type: userType,
                 sender_id: typeof userId !== 'undefined' ? userId : null
@@ -178,39 +275,61 @@ if (document.getElementById('messageForm')) {
             
             ws.send(JSON.stringify(messageData));
             messageInput.value = '';
+            lastMessageTime = now;
             
             // Clear typing indicator
             if (isTyping) {
                 sendTypingIndicator(false);
             }
+        } else if (message) {
+            // Queue message if WebSocket is down
+            const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+            messageQueue.push({
+                type: 'message',
+                session_id: currentSession,
+                message: message,
+                sender_type: userType,
+                sender_id: typeof userId !== 'undefined' ? userId : null
+            });
+            messageInput.value = '';
+            showNotification('Message queued - reconnecting...', 'info', 3000);
         }
     });
     
     // Typing indicator
-    document.getElementById('messageInput').addEventListener('input', function() {
-        // Don't send typing indicator if chat is closed
-        if (this.disabled) {
-            return;
-        }
-        
-        if (!isTyping) {
-            sendTypingIndicator(true);
-        }
-        
-        clearTimeout(typingTimer);
-        typingTimer = setTimeout(function() {
-            sendTypingIndicator(false);
-        }, 1000);
-    });
+    const messageInput = document.getElementById('messageInput');
+    if (messageInput) {
+        messageInput.addEventListener('input', function() {
+            // Don't send typing indicator if chat is closed
+            if (this.disabled) {
+                return;
+            }
+            
+            if (!isTyping) {
+                sendTypingIndicator(true);
+            }
+            
+            clearTimeout(typingTimer);
+            typingTimer = setTimeout(function() {
+                sendTypingIndicator(false);
+            }, 1000);
+        });
+    }
+}
+
+// Initialize message form on page load
+if (document.getElementById('messageForm')) {
+    initializeMessageForm();
 }
 
 // Send typing indicator
 function sendTypingIndicator(typing) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         isTyping = typing;
+        const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
         ws.send(JSON.stringify({
             type: 'typing',
-            session_id: currentSessionId || sessionId,
+            session_id: currentSession,
             user_type: userType,
             is_typing: typing
         }));
@@ -232,7 +351,10 @@ function handleTypingIndicator(data) {
 // Display message
 function displayMessage(data) {
     const container = document.getElementById('messagesContainer');
-    if (!container) return;
+    if (!container) {
+        console.log('Messages container not found');
+        return;
+    }
     
     // Create a unique identifier for this message to prevent duplicates
     const messageId = `${data.sender_type}_${data.message}_${data.timestamp}`;
@@ -296,10 +418,11 @@ function displaySystemMessage(message) {
 
 // Load chat history
 async function loadChatHistory() {
-    if (!sessionId) return;
+    const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+    if (!currentSession) return;
     
     try {
-        const response = await fetch(`/chat/messages/${sessionId}`);
+        const response = await fetch(`/chat/messages/${currentSession}`);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');
@@ -343,7 +466,10 @@ function acceptChat(sessionId) {
 
 function openChat(sessionId) {
     currentSessionId = sessionId;
-    document.getElementById('chatPanel').style.display = 'flex';
+    const chatPanel = document.getElementById('chatPanel');
+    if (chatPanel) {
+        chatPanel.style.display = 'flex';
+    }
     
     // Clear displayed messages when switching sessions
     displayedMessages.clear();
@@ -352,7 +478,10 @@ function openChat(sessionId) {
     const sessionItem = document.querySelector(`[data-session-id="${sessionId}"]`);
     if (sessionItem) {
         const customerName = sessionItem.querySelector('strong').textContent;
-        document.getElementById('chatCustomerName').textContent = customerName;
+        const customerNameElement = document.getElementById('chatCustomerName');
+        if (customerNameElement) {
+            customerNameElement.textContent = customerName;
+        }
     }
     
     // Mark as active
@@ -393,7 +522,10 @@ function closeCurrentChat() {
             body: `session_id=${currentSessionId}`
         });
         
-        document.getElementById('chatPanel').style.display = 'none';
+        const chatPanel = document.getElementById('chatPanel');
+        if (chatPanel) {
+            chatPanel.style.display = 'none';
+        }
         currentSessionId = null;
     }
 }
@@ -614,9 +746,13 @@ function playNotificationSound() {
 
 // Check if session is closed on page load
 async function checkSessionStatus() {
-    if (sessionId && userType === 'customer') {
+    // Get sessionId from global scope or from currentSessionId
+    const sessionToCheck = getSessionId();
+    const userTypeToCheck = getUserType();
+    
+    if (sessionToCheck && userTypeToCheck === 'customer') {
         try {
-            const response = await fetch(`/chat/check-session-status/${sessionId}`);
+            const response = await fetch(`/chat/check-session-status/${sessionToCheck}`);
             const result = await response.json();
             
             if (result.status === 'closed') {
@@ -680,9 +816,12 @@ async function sendCannedResponse(responseId) {
         if (responseData.content) {
             // Send the message through WebSocket
             if (ws && ws.readyState === WebSocket.OPEN) {
+                // Get session ID from available sources
+                const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+                
                 ws.send(JSON.stringify({
                     type: 'message',
-                    session_id: currentSessionId || sessionId,
+                    session_id: currentSession,
                     message: responseData.content,
                     sender_type: userType,
                     sender_id: typeof userId !== 'undefined' ? userId : null
@@ -760,9 +899,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Clear displayed messages on page load
     displayedMessages.clear();
     
-    const sessionActive = await checkSessionStatus();
-    if (sessionActive) {
-        initWebSocket();
+    // Only initialize WebSocket if we're on a chat page
+    const chatInterface = safeGetElement('chatInterface');
+    const messagesContainer = safeGetElement('messagesContainer');
+    
+    if (chatInterface || messagesContainer) {
+        const sessionActive = await checkSessionStatus();
+        if (sessionActive) {
+            initWebSocket();
+        }
+    } else {
+        console.log('Not on a chat page, skipping WebSocket initialization');
     }
 });
 
@@ -865,7 +1012,7 @@ class EnhancedWebSocket {
     }
     
     updateConnectionStatus(status) {
-        const statusElement = document.getElementById('connectionStatus');
+        const statusElement = safeGetElement('connectionStatus');
         if (statusElement) {
             statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
             statusElement.className = `status-indicator ${status}`;
@@ -1027,7 +1174,7 @@ function showConnectionNotification(status) {
 
 // Utility functions
 function getCurrentSessionId() {
-    return currentSessionId || sessionId;
+    return getSessionId();
 }
 
 function formatDate(dateString) {
@@ -1114,32 +1261,33 @@ async function sendQuickResponse(type) {
 
 // Initialize all enhanced features
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize enhanced WebSocket if original fails
-    if (typeof initWebSocket === 'function') {
-        const originalInit = initWebSocket;
-        initWebSocket = function() {
-            try {
-                originalInit();
-            } catch (error) {
-                console.log('Falling back to enhanced WebSocket');
-                ws = new EnhancedWebSocket('ws://localhost:8081');
-                ws.onopen = function() {
-                    console.log('Enhanced WebSocket connected');
-                    // Register connection as before
-                };
-                ws.onmessage = function(event) {
-                    const data = JSON.parse(event.data);
-                    handleWebSocketMessage(data);
-                };
-            }
-        };
-    }
+    console.log('DOM loaded, initializing chat system...');
     
-    // Initialize all enhanced features
-    setTimeout(() => {
-
-        initQuickActions();
-    }, 1000);
+    // Check if we're on a chat-related page
+    const chatInterface = document.getElementById('chatInterface');
+    const messagesContainer = document.getElementById('messagesContainer');
+    
+    if (chatInterface || messagesContainer) {
+        console.log('Chat interface detected, initializing WebSocket...');
+        
+        // Initialize WebSocket
+        initWebSocket();
+        
+        // Check session status for customers
+        const userType = getUserType();
+        if (userType === 'customer') {
+            checkSessionStatus();
+        }
+        
+        // Initialize quick actions for agents
+        if (userType === 'agent') {
+            setTimeout(() => {
+                initQuickActions();
+            }, 1000);
+        }
+    } else {
+        console.log('No chat interface detected, skipping WebSocket initialization');
+    }
 });
 
 // Handle page visibility change for connection management
@@ -1168,3 +1316,4 @@ window.addEventListener('popstate', function(event) {
         }
     }
 });
+}

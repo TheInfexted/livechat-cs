@@ -563,6 +563,7 @@ body {
 }
 
 .modal-content {
+    margin: 5% auto;
     background: white;
     border-radius: 12px;
     padding: 0;

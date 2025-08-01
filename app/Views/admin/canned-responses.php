@@ -45,12 +45,12 @@
 
     <!-- Add/Edit Modal -->
     <div id="responseModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
+        <div class="admin-modal-content">
+            <div class="admin-modal-header">
                 <h3 id="modalTitle">Add New Response</h3>
                 <button class="close-modal" onclick="closeModal()">×</button>
             </div>
-            <div class="modal-body">
+            <div class="admin-modal-body">
                 <form id="responseForm" method="POST">
                     <div class="form-group">
                         <label for="title">Title</label>
@@ -58,7 +58,7 @@
                     </div>
                     <div class="form-group">
                         <label for="content">Content</label>
-                        <textarea id="content" name="content" rows="4" required></textarea>
+                        <textarea id="content" name="content" rows="10" required></textarea>
                     </div>
                     <div class="form-group">
                         <label for="category">Category</label>

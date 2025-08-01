@@ -103,4 +103,66 @@ class ChatAnalytics
             LIMIT ?
         ", [$limit])->getResultArray();
     }
+    
+    public function getSessionTrends($days = 30)
+    {
+        return $this->db->query("
+            SELECT 
+                DATE(created_at) as date,
+                COUNT(*) as total_sessions,
+                COUNT(CASE WHEN status = 'closed' THEN 1 END) as completed_sessions,
+                AVG(CASE WHEN closed_at IS NOT NULL 
+                    THEN TIMESTAMPDIFF(MINUTE, created_at, closed_at) 
+                    ELSE NULL END) as avg_duration
+            FROM chat_sessions 
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+        ", [$days])->getResultArray();
+    }
+    
+    public function getCustomerSatisfactionTrends($days = 30)
+    {
+        return $this->db->query("
+            SELECT 
+                DATE(created_at) as date,
+                AVG(rating) as avg_rating,
+                COUNT(rating) as total_ratings
+            FROM chat_sessions 
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            AND rating IS NOT NULL
+            GROUP BY DATE(created_at)
+            ORDER BY date DESC
+        ", [$days])->getResultArray();
+    }
+    
+    public function getResponseTimeAnalysis($days = 30)
+    {
+        return $this->db->query("
+            SELECT 
+                AVG(first_response_time) as avg_first_response,
+                MIN(first_response_time) as min_response_time,
+                MAX(first_response_time) as max_response_time,
+                COUNT(*) as total_sessions
+            FROM chat_analytics ca
+            JOIN chat_sessions cs ON ca.session_id = cs.id
+            WHERE cs.created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            AND ca.first_response_time IS NOT NULL
+        ", [$days])->getResultArray();
+    }
+    
+    public function getBusiestHours($days = 7)
+    {
+        return $this->db->query("
+            SELECT 
+                HOUR(created_at) as hour,
+                COUNT(*) as session_count,
+                AVG(TIMESTAMPDIFF(MINUTE, created_at, COALESCE(closed_at, NOW()))) as avg_duration
+            FROM chat_sessions 
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+            GROUP BY HOUR(created_at)
+            ORDER BY session_count DESC
+            LIMIT 10
+        ", [$days])->getResultArray();
+    }
 }

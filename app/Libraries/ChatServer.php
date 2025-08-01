@@ -97,7 +97,17 @@ class ChatServer implements MessageComponentInterface
         $sessionId = $data['session_id'];
         $userType = $data['user_type'] ?? 'customer';
         
-        echo "Registering connection: Session ID = $sessionId, User Type = $userType\n";
+        echo "Registering connection: Session ID = '$sessionId', User Type = '$userType'\n";
+        
+        // Validate session ID
+        if (empty($sessionId)) {
+            echo "ERROR: Empty session ID received\n";
+            $conn->send(json_encode([
+                'type' => 'error',
+                'message' => 'Invalid session ID'
+            ]));
+            return;
+        }
         
         if (!isset($this->sessions[$sessionId])) {
             $this->sessions[$sessionId] = [];
@@ -109,7 +119,7 @@ class ChatServer implements MessageComponentInterface
             'user_id' => $data['user_id'] ?? null
         ];
         
-        echo "Sessions for $sessionId: " . count($this->sessions[$sessionId]) . " connections\n";
+        echo "Sessions for '$sessionId': " . count($this->sessions[$sessionId]) . " connections\n";
         
         // Send connection success
         $conn->send(json_encode([
