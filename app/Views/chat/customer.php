@@ -53,9 +53,6 @@
     let sessionId = '<?= $session_id ?? '' ?>';
     let currentSessionId = null;
     
-    // Debug logging
-    console.log('Customer chat initialized');
-    console.log('Session ID:', sessionId);
-    console.log('User Type:', userType);
+
 </script>
 <?= $this->endSection() ?>

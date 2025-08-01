@@ -33,19 +33,18 @@ $routes->group('admin', ['filter' => 'authfilter'], function($routes) {
     $routes->post('agents/edit', 'AdminController::editAgent');
     $routes->post('agents/add', 'AdminController::addAgent');
     $routes->post('agents/delete', 'AdminController::deleteAgent');
-    $routes->get('reports', 'AdminController::reports');
-    $routes->get('analytics', 'AdminController::analytics');
     $routes->get('canned-responses', 'AdminController::cannedResponses');
     $routes->get('canned-responses/get/(:segment)', 'AdminController::getCannedResponse/$1');
     $routes->get('canned-responses/get-all', 'AdminController::getAllCannedResponses');
     $routes->post('canned-responses/save', 'AdminController::saveCannedResponse');
     $routes->post('canned-responses/delete', 'AdminController::deleteCannedResponse');
+    $routes->get('sessions-data', 'AdminController::sessionsData');
     $routes->get('settings', 'AdminController::settings');
     $routes->post('settings/save', 'AdminController::saveSettings');
     $routes->get('customers', 'AdminController::customers');
     $routes->get('customers/(:segment)', 'AdminController::customerDetails/$1');
     $routes->get('export/chats', 'AdminController::exportChats');
-    $routes->get('export/analytics', 'AdminController::exportAnalytics');
+
 });
 
 // Real-time notifications (for WebSocket fallback)

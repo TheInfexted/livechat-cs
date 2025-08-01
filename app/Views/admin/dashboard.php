@@ -46,7 +46,7 @@
         <?php if ($user['role'] === 'admin'): ?>
             <a href="<?= base_url('admin/agents') ?>" class="btn btn-secondary">Manage Agents</a>
         <?php endif; ?>
-        <a href="<?= base_url('admin/reports') ?>" class="btn btn-info">View Reports</a>
+
         <a href="<?= base_url('admin/canned-responses') ?>" class="btn btn-info">Canned Responses</a>
     </div>
 </div>

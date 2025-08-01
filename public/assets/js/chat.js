@@ -6,22 +6,23 @@ let displayedMessages = new Set();
 let messageQueue = []; 
 let lastMessageTime = 0; 
 const MESSAGE_RATE_LIMIT = 1000;
-
-// Global session variables (will be set by view files)
-// Note: sessionId, userType, and userId are declared in view files
-let currentSessionId = null;
+let isInitializing = false;
 
 // Helper function to safely get DOM elements
 function safeGetElement(id) {
     const element = document.getElementById(id);
     if (!element) {
-        console.log(`Element with id '${id}' not found`);
+        return null;
     }
     return element;
 }
 
 // Helper function to safely get session variables
 function getSessionId() {
+    // For admin, prioritize currentSessionId
+    if (getUserType() === 'agent' && typeof currentSessionId !== 'undefined' && currentSessionId) {
+        return currentSessionId;
+    }
     return typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
 }
 
@@ -31,55 +32,457 @@ function getUserType() {
 
 function getUserId() {
     return typeof userId !== 'undefined' ? userId : null;
-} 
+}
+
+// Admin session refresh function
+function refreshAdminSessions() {
+    // Try to use JSON API first, fallback to HTML parsing
+    fetch('/admin/sessions-data')
+        .then(response => {
+            if (response.ok) {
+                return response.json();
+            } else {
+                // Fallback to HTML parsing
+                return fetch('/admin/chat').then(r => r.text()).then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    
+                    const waitingSessions = [];
+                    const activeSessions = [];
+                    
+                    // Parse waiting sessions
+                    const waitingElements = doc.querySelectorAll('#waitingSessions .session-item');
+                    waitingElements.forEach(el => {
+                        const sessionId = el.getAttribute('data-session-id');
+                        const name = el.querySelector('strong')?.textContent || '';
+                        const time = el.querySelector('small')?.textContent || '';
+                        waitingSessions.push({ session_id: sessionId, customer_name: name, created_at: time });
+                    });
+                    
+                    // Parse active sessions
+                    const activeElements = doc.querySelectorAll('#activeSessions .session-item');
+                    activeElements.forEach(el => {
+                        const sessionId = el.getAttribute('data-session-id');
+                        const name = el.querySelector('strong')?.textContent || '';
+                        const agent = el.querySelector('small')?.textContent || '';
+                        activeSessions.push({ session_id: sessionId, customer_name: name, agent_name: agent });
+                    });
+                    
+                    return { waitingSessions, activeSessions };
+                });
+            }
+        })
+        .then(data => {
+            // Update waiting sessions
+            const waitingContainer = document.getElementById('waitingSessions');
+            const waitingCount = document.getElementById('waitingCount');
+            if (waitingContainer && waitingCount) {
+                waitingContainer.innerHTML = '';
+                waitingCount.textContent = data.waitingSessions.length;
+                
+                data.waitingSessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = 'session-item';
+                    item.setAttribute('data-session-id', session.session_id);
+                    
+                    item.innerHTML = `
+                        <div class="session-info">
+                            <strong>${escapeHtml(session.customer_name)}</strong>
+                            <small>${session.created_at}</small>
+                        </div>
+                        <button class="btn btn-accept" onclick="acceptChat('${session.session_id}')">Accept</button>
+                    `;
+                    
+                    waitingContainer.appendChild(item);
+                });
+            }
+            
+            // Update active sessions
+            const activeContainer = document.getElementById('activeSessions');
+            const activeCount = document.getElementById('activeCount');
+            if (activeContainer && activeCount) {
+                activeContainer.innerHTML = '';
+                activeCount.textContent = data.activeSessions.length;
+                
+                data.activeSessions.forEach(session => {
+                    const item = document.createElement('div');
+                    item.className = 'session-item active';
+                    item.setAttribute('data-session-id', session.session_id);
+                    item.onclick = () => openChat(session.session_id);
+                    
+                    item.innerHTML = `
+                        <div class="session-info">
+                            <strong>${escapeHtml(session.customer_name)}</strong>
+                            <small>Agent: ${escapeHtml(session.agent_name || 'Unassigned')}</small>
+                        </div>
+                        <span class="unread-badge" style="display: none;">0</span>
+                    `;
+                    
+                    activeContainer.appendChild(item);
+                });
+            }
+        })
+        .catch(error => {
+            // Error handling without console log
+        });
+}
+
+// Auto-refresh admin sessions every 5 seconds
+function startAdminAutoRefresh() {
+    if (getUserType() === 'agent') {
+        setInterval(() => {
+            refreshAdminSessions();
+        }, 5000); // Refresh every 5 seconds
+    }
+}
+
+// Critical functions that need to be available early
+async function checkSessionStatus() {
+    const sessionToCheck = getSessionId();
+    const userTypeToCheck = getUserType();
+    
+    if (sessionToCheck && userTypeToCheck === 'customer') {
+        try {
+            const response = await fetch(`/chat/check-session-status/${sessionToCheck}`);
+            const result = await response.json();
+            
+            if (result.status === 'closed') {
+                disableChatInput();
+                showChatClosedMessage();
+                displaySystemMessage('This chat session has been closed by the support team.');
+                return false;
+            }
+            return true;
+        } catch (error) {
+            return true;
+        }
+    }
+    return true;
+}
+
+async function loadChatHistory() {
+    const currentSession = getSessionId();
+    if (!currentSession) return;
+    
+    try {
+        const response = await fetch(`/chat/messages/${currentSession}`);
+        const messages = await response.json();
+        
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            container.innerHTML = '';
+            displayedMessages.clear(); // Clear displayed messages for fresh load
+            messages.forEach(message => {
+                // Ensure each message has proper timestamp
+                message = ensureMessageTimestamp(message);
+                displayMessage(message);
+            });
+        }
+    } catch (error) {
+        // Error handling without console log
+    }
+}
+
+async function acceptChat(sessionId) {
+    try {
+        // First, assign the agent via HTTP
+        const response = await fetch('/chat/assign-agent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `session_id=${sessionId}`
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // Then notify WebSocket server
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({
+                    type: 'assign_agent',
+                    session_id: sessionId,
+                    agent_id: userId
+                }));
+            }
+            
+            // Open the chat after successful assignment
+            openChat(sessionId);
+        } else {
+            alert('Failed to accept chat. Please try again.');
+        }
+    } catch (error) {
+        alert('Failed to accept chat. Please try again.');
+    }
+}
+
+function openChat(sessionId) {
+    currentSessionId = sessionId;
+    const chatPanel = document.getElementById('chatPanel');
+    if (chatPanel) {
+        chatPanel.style.display = 'flex';
+    }
+    
+    displayedMessages.clear();
+    
+    const sessionItem = document.querySelector(`[data-session-id="${sessionId}"]`);
+    if (sessionItem) {
+        const customerName = sessionItem.querySelector('strong').textContent;
+        const customerNameElement = document.getElementById('chatCustomerName');
+        if (customerNameElement) {
+            customerNameElement.textContent = customerName;
+        }
+    }
+    
+    document.querySelectorAll('.session-item').forEach(item => {
+        item.classList.remove('active');
+    });
+    sessionItem.classList.add('active');
+    
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        const registerData = {
+            type: 'register',
+            session_id: sessionId,
+            user_type: 'agent',
+            user_id: userId
+        };
+        ws.send(JSON.stringify(registerData));
+    }
+    
+    loadChatHistoryForSession(sessionId);
+    
+    // Re-initialize message form for admin after opening chat
+    setTimeout(() => {
+        initializeMessageForm();
+        if (getUserType() === 'agent') {
+            initQuickActions();
+        }
+    }, 500);
+    
+    // Ensure chat input is enabled for admin
+    const input = document.getElementById('messageInput');
+    const button = document.querySelector('.btn-send');
+    if (input) {
+        input.disabled = false;
+        input.placeholder = 'Type your message...';
+    }
+    if (button) {
+        button.disabled = false;
+        button.textContent = 'Send';
+    }
+    
+    // Remove any "chat ended" messages for admin
+    const closedMessage = document.querySelector('.chat-closed-message');
+    if (closedMessage) {
+        closedMessage.remove();
+    }
+    
+    // Clear any system messages about chat ending
+    const systemMessages = document.querySelectorAll('.message.system');
+    systemMessages.forEach(msg => {
+        if (msg.textContent.includes('ended') || msg.textContent.includes('closed')) {
+            msg.remove();
+        }
+    });
+}
+
+function closeCurrentChat() {
+    if (currentSessionId && confirm('Are you sure you want to close this chat?')) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'close_session',
+                session_id: currentSessionId
+            }));
+        }
+        
+        fetch('/chat/close-session', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: `session_id=${currentSessionId}`
+        });
+        
+        const chatPanel = document.getElementById('chatPanel');
+        if (chatPanel) {
+            chatPanel.style.display = 'none';
+        }
+        currentSessionId = null;
+    }
+}
+
+async function loadChatHistoryForSession(sessionId) {
+    if (!sessionId) return;
+    
+    try {
+        const response = await fetch(`/chat/messages/${sessionId}`);
+        const messages = await response.json();
+        
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            container.innerHTML = '';
+            displayedMessages.clear();
+            messages.forEach(message => {
+                // Ensure each message has proper timestamp
+                message = ensureMessageTimestamp(message);
+                displayMessage(message);
+            });
+        }
+    } catch (error) {
+        // Error handling without console log
+    }
+}
+
+function displaySystemMessage(message) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    const messageDiv = document.createElement('div');
+    messageDiv.className = 'message system';
+    
+    const p = document.createElement('p');
+    p.textContent = message;
+    
+    messageDiv.appendChild(p);
+    container.appendChild(messageDiv);
+    
+    container.scrollTop = container.scrollHeight;
+}
+
+function disableChatInput() {
+    const input = document.getElementById('messageInput');
+    const button = document.querySelector('.btn-send');
+    
+    if (input) {
+        input.disabled = true;
+        input.placeholder = 'Chat session has ended';
+    }
+    if (button) {
+        button.disabled = true;
+        button.textContent = 'Chat Ended';
+    }
+}
+
+function showChatClosedMessage() {
+    const chatInterface = document.getElementById('chatInterface');
+    if (chatInterface) {
+        const closedMessage = document.createElement('div');
+        closedMessage.className = 'chat-closed-message';
+        closedMessage.innerHTML = `
+            <div class="closed-overlay">
+                <div class="closed-content">
+                    <h3>Chat Session Ended</h3>
+                    <p>This chat session has been closed by the support team.</p>
+                    <p>Thank you for contacting us!</p>
+                    <button class="btn btn-primary start-new-chat-btn" onclick="startNewChat()">
+                        Start New Chat
+                    </button>
+                </div>
+            </div>
+        `;
+        chatInterface.appendChild(closedMessage);
+    }
+}
+
+function startNewChat() {
+    sessionId = null;
+    currentSessionId = null;
+    
+    const closedMessage = document.querySelector('.chat-closed-message');
+    if (closedMessage) {
+        closedMessage.remove();
+    }
+    
+    const chatInterface = document.getElementById('chatInterface');
+    if (chatInterface) {
+        chatInterface.innerHTML = `
+            <div class="chat-start-form">
+                <h4>Start a New Chat Session</h4>
+                <form id="startChatForm">
+                    <div class="form-group">
+                        <label for="name">Your Name</label>
+                        <input type="text" id="name" name="name" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email (Optional)</label>
+                        <input type="email" id="email" name="email">
+                    </div>
+                    <button type="submit" class="btn btn-primary">Start Chat</button>
+                </form>
+            </div>
+        `;
+        
+        document.getElementById('startChatForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(this);
+            
+            try {
+                const response = await fetch('/chat/start-session', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    sessionId = result.session_id;
+                    location.reload();
+                } else {
+                    alert(result.error || 'Failed to start chat');
+                }
+            } catch (error) {
+                console.error('Error starting chat:', error);
+                alert('Failed to connect. Please try again.');
+            }
+        });
+    }
+}
 
 // Initialize WebSocket connection
 function initWebSocket() {
+    if (ws && ws.readyState !== WebSocket.CLOSED) {
+        ws.close();
+    }
+    
     ws = new WebSocket('ws://localhost:8081');
     
     ws.onopen = function() {
-        console.log('Connected to chat server');
         const connectionStatus = safeGetElement('connectionStatus');
         if (connectionStatus) {
             connectionStatus.textContent = 'Online';
             connectionStatus.classList.add('online');
         }
         
-        // Register connection
-        const currentUserType = getUserType();
-        if (currentUserType) {
-            const currentSession = getSessionId();
-            const currentUserId = getUserId();
-            const registerData = {
-                type: 'register',
-                session_id: currentSession || null,
-                user_type: currentUserType,
-                user_id: currentUserId
-            };
-            console.log('Registering WebSocket connection:', registerData);
-            ws.send(JSON.stringify(registerData));
-        } else {
-            console.log('No user type available for WebSocket registration');
-        }
+        setTimeout(() => {
+            const currentUserType = getUserType();
+            if (currentUserType) {
+                const currentSession = getSessionId();
+                const currentUserId = getUserId();
+                const registerData = {
+                    type: 'register',
+                    session_id: currentSession || null,
+                    user_type: currentUserType,
+                    user_id: currentUserId
+                };
+                ws.send(JSON.stringify(registerData));
+            }
+        }, 100);
         
-        // Clear reconnect interval
         if (reconnectInterval) {
             clearInterval(reconnectInterval);
             reconnectInterval = null;
         }
         
-        // Process queued messages
         if (messageQueue.length > 0) {
             messageQueue.forEach(msg => {
                 ws.send(JSON.stringify(msg));
             });
             messageQueue = [];
-            showNotification('Queued messages sent', 'success', 2000);
         }
         
-        // For admin, set up periodic refresh of sessions
         if (userType === 'agent') {
-            setInterval(refreshAdminSessions, 10000); // Refresh every 10 seconds
+            setInterval(refreshAdminSessions, 10000);
         }
     };
     
@@ -89,24 +492,21 @@ function initWebSocket() {
     };
     
     ws.onclose = function() {
-        console.log('Disconnected from chat server');
         const connectionStatus = safeGetElement('connectionStatus');
         if (connectionStatus) {
             connectionStatus.textContent = 'Offline';
             connectionStatus.classList.remove('online');
         }
         
-        // Attempt to reconnect
         if (!reconnectInterval) {
             reconnectInterval = setInterval(function() {
-                console.log('Attempting to reconnect...');
                 initWebSocket();
             }, 5000);
         }
     };
     
     ws.onerror = function(error) {
-        console.error('WebSocket error:', error);
+        // Error handling without console log
     };
 }
 
@@ -114,36 +514,66 @@ function initWebSocket() {
 function handleWebSocketMessage(data) {
     switch (data.type) {
         case 'connected':
-            console.log(data.message);
             const connectedSession = getSessionId();
             const connectedUserType = getUserType();
-            if (connectedSession && connectedUserType === 'customer') {
-                loadChatHistory();
+            if (connectedSession) {
+                if (connectedUserType === 'customer') {
+                    loadChatHistory();
+                } else if (connectedUserType === 'agent' && currentSessionId) {
+                    loadChatHistoryForSession(currentSessionId);
+                }
             }
             break;
             
         case 'message':
-            console.log('Received message:', data);
-            console.log('Current session ID:', currentSessionId);
-            console.log('Message session ID:', data.session_id);
-            console.log('User type:', userType);
-            console.log('Sender type:', data.sender_type);
-            console.log('Message content:', data.message);
+            // Check for duplicate of our own message BEFORE clearing tracking variables
+            if (window.lastSentMessageContent && data.message && 
+                data.message.toLowerCase().trim() === window.lastSentMessageContent && 
+                data.sender_type === getUserType()) {
+                // Clear tracking variables for our own message
+                window.lastSentMessageContent = null;
+                window.lastMessageTime = null;
+                window.justSentMessage = false;
+                return; // Exit early, don't display the message
+            }
             
-            // Check if this message belongs to the currently open chat (for admin)
+            // Clear the last sent message ID since we received it from server
+            if (window.lastSentMessageId) {
+                window.lastSentMessageId = null;
+            }
+            
+            // Clear the last sent message content as well
+            if (window.lastSentMessageContent) {
+                window.lastSentMessageContent = null;
+            }
+            
+            // Clear the last message time as well
+            if (window.lastMessageTime) {
+                window.lastMessageTime = null;
+            }
+            
+            // Clear tracking variables when we receive our own message
+            if (data.sender_type === getUserType()) {
+                window.lastSentMessageContent = null;
+                window.lastMessageTime = null;
+                window.justSentMessage = false;
+            }
+            
             const messageUserType = getUserType();
             const messageSession = getSessionId();
             
+            // For admin, check if this message belongs to the currently open chat
             if (messageUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
-                console.log('Displaying message for admin');
                 displayMessage(data);
                 playNotificationSound();
             } else if (messageUserType === 'customer' && messageSession && data.session_id === messageSession) {
-                console.log('Displaying message for customer');
                 displayMessage(data);
                 playNotificationSound();
             } else {
-                console.log('Message not for current session');
+                // Try to display message anyway if session IDs match
+                if (data.session_id === (messageSession || currentSessionId)) {
+                    displayMessage(data);
+                }
             }
             break;
             
@@ -168,16 +598,10 @@ function handleWebSocketMessage(data) {
         case 'update_sessions':
             refreshAdminSessions();
             break;
-
-
-            
-
             
         case 'system_message':
             displaySystemMessage(data.message);
             break;
-            
- 
     }
 }
 
@@ -201,7 +625,6 @@ if (document.getElementById('startChatForm')) {
                 sessionId = result.session_id;
                 currentSessionId = result.session_id;
                 
-                // Update the page to show chat interface without reload
                 const chatInterface = document.getElementById('chatInterface');
                 if (chatInterface) {
                     chatInterface.innerHTML = `
@@ -227,7 +650,6 @@ if (document.getElementById('startChatForm')) {
                         </div>
                     `;
                     
-                    // Re-initialize WebSocket and message form
                     initWebSocket();
                     initializeMessageForm();
                 }
@@ -244,93 +666,114 @@ if (document.getElementById('startChatForm')) {
 // Initialize message form handler
 function initializeMessageForm() {
     const messageForm = document.getElementById('messageForm');
-    if (messageForm) {
-        messageForm.addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        const messageInput = document.getElementById('messageInput');
-        const message = messageInput.value.trim();
-        
-        // Check if chat is closed
-        if (messageInput.disabled) {
-            return; // Don't send if chat is closed
-        }
-        
-        // Rate limiting
-        const now = Date.now();
-        if (now - lastMessageTime < MESSAGE_RATE_LIMIT) {
-            showNotification('Please wait before sending another message', 'warning', 2000);
-            return;
-        }
-        
-        if (message && ws && ws.readyState === WebSocket.OPEN) {
-            const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
-            const messageData = {
-                type: 'message',
-                session_id: currentSession,
-                message: message,
-                sender_type: userType,
-                sender_id: typeof userId !== 'undefined' ? userId : null
-            };
-            
-            ws.send(JSON.stringify(messageData));
-            messageInput.value = '';
-            lastMessageTime = now;
-            
-            // Clear typing indicator
-            if (isTyping) {
-                sendTypingIndicator(false);
-            }
-        } else if (message) {
-            // Queue message if WebSocket is down
-            const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
-            messageQueue.push({
-                type: 'message',
-                session_id: currentSession,
-                message: message,
-                sender_type: userType,
-                sender_id: typeof userId !== 'undefined' ? userId : null
-            });
-            messageInput.value = '';
-            showNotification('Message queued - reconnecting...', 'info', 3000);
-        }
-    });
     
-    // Typing indicator
-    const messageInput = document.getElementById('messageInput');
-    if (messageInput) {
-        messageInput.addEventListener('input', function() {
-            // Don't send typing indicator if chat is closed
-            if (this.disabled) {
+    if (messageForm) {
+        const newForm = messageForm.cloneNode(true);
+        messageForm.parentNode.replaceChild(newForm, messageForm);
+        
+        const freshMessageForm = document.getElementById('messageForm');
+        
+        freshMessageForm.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (messageInput.disabled) {
                 return;
             }
             
-            if (!isTyping) {
-                sendTypingIndicator(true);
+            const now = Date.now();
+            if (now - lastMessageTime < MESSAGE_RATE_LIMIT) {
+                return;
             }
             
-            clearTimeout(typingTimer);
-            typingTimer = setTimeout(function() {
-                sendTypingIndicator(false);
-            }, 1000);
+            // For admin, use currentSessionId if getSessionId() is null
+            const sessionToUse = getSessionId() || currentSessionId;
+            
+            if (message && ws && ws.readyState === WebSocket.OPEN && sessionToUse) {
+                const messageData = {
+                    type: 'message',
+                    session_id: sessionToUse,
+                    message: message,
+                    sender_type: getUserType(),
+                    sender_id: getUserId()
+                };
+                
+                ws.send(JSON.stringify(messageData));
+                messageInput.value = '';
+                lastMessageTime = now;
+                
+                // Display message immediately for sender
+                const immediateMessage = {
+                    type: 'message',
+                    session_id: sessionToUse,
+                    sender_type: getUserType(),
+                    message: message,
+                    timestamp: new Date().toISOString(),
+                    id: 'temp_' + Date.now() // Temporary ID for immediate display
+                };
+                displayMessage(immediateMessage);
+                
+                // Store this message ID and content to prevent duplicate display when received from WebSocket
+                window.lastSentMessageId = immediateMessage.id;
+                window.lastSentMessageContent = message.toLowerCase().trim();
+                window.lastMessageTime = Date.now();
+                window.justSentMessage = true; // Flag to indicate we just sent a message
+                
+                // Clear tracking variables after 3 seconds to prevent permanent blocking
+                setTimeout(() => {
+                    if (window.lastSentMessageContent === message.toLowerCase().trim()) {
+                        window.lastSentMessageContent = null;
+                        window.lastMessageTime = null;
+                        window.justSentMessage = false;
+                    }
+                }, 3000);
+                
+                if (isTyping) {
+                    sendTypingIndicator(false);
+                }
+            } else if (message) {
+                messageQueue.push({
+                    type: 'message',
+                    session_id: sessionToUse,
+                    message: message,
+                    sender_type: getUserType(),
+                    sender_id: getUserId()
+                });
+                messageInput.value = '';
+            }
         });
+        
+        const messageInput = document.getElementById('messageInput');
+        if (messageInput) {
+            messageInput.addEventListener('input', function() {
+                if (this.disabled) {
+                    return;
+                }
+                
+                if (!isTyping) {
+                    sendTypingIndicator(true);
+                }
+                
+                clearTimeout(typingTimer);
+                typingTimer = setTimeout(function() {
+                    sendTypingIndicator(false);
+                }, 1000);
+            });
+        }
     }
-}
-
-// Initialize message form on page load
-if (document.getElementById('messageForm')) {
-    initializeMessageForm();
 }
 
 // Send typing indicator
 function sendTypingIndicator(typing) {
     if (ws && ws.readyState === WebSocket.OPEN) {
         isTyping = typing;
-        const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+        const currentSession = getSessionId();
         ws.send(JSON.stringify({
             type: 'typing',
             session_id: currentSession,
-            user_type: userType,
+            user_type: getUserType(),
             is_typing: typing
         }));
     }
@@ -340,7 +783,7 @@ function sendTypingIndicator(typing) {
 function handleTypingIndicator(data) {
     const indicator = document.getElementById('typingIndicator');
     if (indicator) {
-        if (data.is_typing && data.user_type !== userType) {
+        if (data.is_typing && data.user_type !== getUserType()) {
             indicator.style.display = 'flex';
         } else {
             indicator.style.display = 'none';
@@ -352,30 +795,31 @@ function handleTypingIndicator(data) {
 function displayMessage(data) {
     const container = document.getElementById('messagesContainer');
     if (!container) {
-        console.log('Messages container not found');
         return;
     }
     
-    // Create a unique identifier for this message to prevent duplicates
-    const messageId = `${data.sender_type}_${data.message}_${data.timestamp}`;
+    // Ensure message has proper timestamp
+    data = ensureMessageTimestamp(data);
     
-    // Check if this message has already been displayed
+    // Duplicate detection is now handled in handleWebSocketMessage before displayMessage is called
+    const messageContent = data.message ? data.message.toLowerCase().trim() : '';
+    
+    // Create a more robust message ID that includes the actual message content
+    const messageId = `${data.sender_type}_${messageContent}_${data.timestamp}`;
+    
     if (displayedMessages.has(messageId)) {
-        console.log('Duplicate message detected, skipping:', messageId);
         return;
     }
     
-    // Add to displayed messages set
     displayedMessages.add(messageId);
     
     const messageDiv = document.createElement('div');
     
-    // For admin interface, position messages differently
     if (userType === 'agent') {
         if (data.sender_type === 'customer') {
-            messageDiv.className = 'message customer'; // Customer messages on left
+            messageDiv.className = 'message customer';
         } else {
-            messageDiv.className = 'message agent'; // Agent messages on right
+            messageDiv.className = 'message agent';
         }
     } else {
         messageDiv.className = `message ${data.sender_type}`;
@@ -393,170 +837,7 @@ function displayMessage(data) {
     messageDiv.appendChild(bubble);
     container.appendChild(messageDiv);
     
-    // Scroll to bottom
     container.scrollTop = container.scrollHeight;
-}
-
-// Display system message
-function displaySystemMessage(message) {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    
-    const messageDiv = document.createElement('div');
-    messageDiv.className = 'message system';
-    
-    const p = document.createElement('p');
-    p.textContent = message;
-    
-    messageDiv.appendChild(p);
-    container.appendChild(messageDiv);
-    
-    container.scrollTop = container.scrollHeight;
-}
-
-
-
-// Load chat history
-async function loadChatHistory() {
-    const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
-    if (!currentSession) return;
-    
-    try {
-        const response = await fetch(`/chat/messages/${currentSession}`);
-        const messages = await response.json();
-        
-        const container = document.getElementById('messagesContainer');
-        if (!container) return;
-        
-        container.innerHTML = '';
-        
-        messages.forEach(msg => {
-            displayMessage({
-                sender_type: msg.sender_type,
-                message: msg.message,
-                timestamp: msg.created_at
-            });
-        });
-    } catch (error) {
-        console.error('Error loading chat history:', error);
-    }
-}
-
-// Admin functions
-function acceptChat(sessionId) {
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'assign_agent',
-            session_id: sessionId,
-            agent_id: userId
-        }));
-        
-        // Also update via HTTP for database
-        fetch('/chat/assign-agent', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `session_id=${sessionId}`
-        });
-        
-        openChat(sessionId);
-    }
-}
-
-function openChat(sessionId) {
-    currentSessionId = sessionId;
-    const chatPanel = document.getElementById('chatPanel');
-    if (chatPanel) {
-        chatPanel.style.display = 'flex';
-    }
-    
-    // Clear displayed messages when switching sessions
-    displayedMessages.clear();
-    
-    // Update header
-    const sessionItem = document.querySelector(`[data-session-id="${sessionId}"]`);
-    if (sessionItem) {
-        const customerName = sessionItem.querySelector('strong').textContent;
-        const customerNameElement = document.getElementById('chatCustomerName');
-        if (customerNameElement) {
-            customerNameElement.textContent = customerName;
-        }
-    }
-    
-    // Mark as active
-    document.querySelectorAll('.session-item').forEach(item => {
-        item.classList.remove('active');
-    });
-    sessionItem.classList.add('active');
-    
-    // Register for this session with WebSocket
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'register',
-            session_id: sessionId,
-            user_type: 'agent',
-            user_id: userId
-        }));
-    }
-    
-    // Load messages for this session
-    loadChatHistoryForSession(sessionId);
-}
-
-function closeCurrentChat() {
-    if (currentSessionId && confirm('Are you sure you want to close this chat?')) {
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({
-                type: 'close_session',
-                session_id: currentSessionId
-            }));
-        }
-        
-        // Also update via HTTP
-        fetch('/chat/close-session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `session_id=${currentSessionId}`
-        });
-        
-        const chatPanel = document.getElementById('chatPanel');
-        if (chatPanel) {
-            chatPanel.style.display = 'none';
-        }
-        currentSessionId = null;
-    }
-}
-
-async function loadChatHistoryForSession(sessionId) {
-    if (!sessionId) return;
-    
-    try {
-        const response = await fetch(`/chat/messages/${sessionId}`);
-        const messages = await response.json();
-        
-        const container = document.getElementById('messagesContainer');
-        if (!container) return;
-        
-        // Clear container and reset displayed messages
-        container.innerHTML = '';
-        displayedMessages.clear();
-        
-        messages.forEach(msg => {
-            displayMessage({
-                sender_type: msg.sender_type,
-                message: msg.message,
-                timestamp: msg.created_at
-            });
-        });
-        
-        // Scroll to bottom after loading messages
-        container.scrollTop = container.scrollHeight;
-    } catch (error) {
-        console.error('Error loading chat history:', error);
-    }
 }
 
 function updateWaitingSessions(sessions) {
@@ -585,56 +866,38 @@ function updateWaitingSessions(sessions) {
     }
 }
 
-function refreshAdminSessions() {
-    // Refresh the sessions list without reloading the page
-    fetch('/admin/chat')
-        .then(response => response.text())
-        .then(html => {
-            // Update the sessions panel with new data
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            
-            // Update waiting sessions
-            const newWaitingSessions = doc.getElementById('waitingSessions');
-            const currentWaitingSessions = document.getElementById('waitingSessions');
-            if (newWaitingSessions && currentWaitingSessions) {
-                currentWaitingSessions.innerHTML = newWaitingSessions.innerHTML;
-            }
-            
-            // Update active sessions
-            const newActiveSessions = doc.getElementById('activeSessions');
-            const currentActiveSessions = document.getElementById('activeSessions');
-            if (newActiveSessions && currentActiveSessions) {
-                currentActiveSessions.innerHTML = newActiveSessions.innerHTML;
-            }
-            
-            // Update counts
-            const newWaitingCount = doc.getElementById('waitingCount');
-            const currentWaitingCount = document.getElementById('waitingCount');
-            if (newWaitingCount && currentWaitingCount) {
-                currentWaitingCount.textContent = newWaitingCount.textContent;
-            }
-            
-            const newActiveCount = doc.getElementById('activeCount');
-            const currentActiveCount = document.getElementById('activeCount');
-            if (newActiveCount && currentActiveCount) {
-                currentActiveCount.textContent = newActiveCount.textContent;
-            }
-        })
-        .catch(error => {
-            console.error('Error refreshing sessions:', error);
-        });
-}
-
 // Utility functions
 function formatTime(timestamp) {
-    const date = new Date(timestamp);
-    return date.toLocaleTimeString('en-US', { 
-        hour: 'numeric', 
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Kuala_Lumpur'
-    });
+    if (!timestamp) {
+        return 'Invalid Date';
+    }
+    
+    try {
+        const date = new Date(timestamp);
+        
+        // Check if date is valid
+        if (isNaN(date.getTime())) {
+            return 'Invalid Date';
+        }
+        
+        return date.toLocaleTimeString('en-US', { 
+            hour: 'numeric', 
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'Asia/Kuala_Lumpur'
+        });
+    } catch (error) {
+        return 'Invalid Date';
+    }
+}
+
+// Helper function to ensure message has proper timestamp
+function ensureMessageTimestamp(message) {
+    if (!message.timestamp || message.timestamp === 'Invalid Date') {
+        // If no timestamp, use current time
+        message.timestamp = new Date().toISOString();
+    }
+    return message;
 }
 
 function escapeHtml(text) {
@@ -643,135 +906,11 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-function disableChatInput() {
-    const input = document.getElementById('messageInput');
-    const button = document.querySelector('.btn-send');
-    
-    if (input) {
-        input.disabled = true;
-        input.placeholder = 'Chat session has ended';
-    }
-    if (button) {
-        button.disabled = true;
-        button.textContent = 'Chat Ended';
-    }
-}
-
-function showChatClosedMessage() {
-    // Add a visual overlay or message to indicate chat is closed
-    const chatInterface = document.getElementById('chatInterface');
-    if (chatInterface) {
-        const closedMessage = document.createElement('div');
-        closedMessage.className = 'chat-closed-message';
-        closedMessage.innerHTML = `
-            <div class="closed-overlay">
-                <div class="closed-content">
-                    <h3>Chat Session Ended</h3>
-                    <p>This chat session has been closed by the support team.</p>
-                    <p>Thank you for contacting us!</p>
-                    <button class="btn btn-primary start-new-chat-btn" onclick="startNewChat()">
-                        Start New Chat
-                    </button>
-                </div>
-            </div>
-        `;
-        chatInterface.appendChild(closedMessage);
-    }
-}
-
-function startNewChat() {
-    // Clear the current session
-    sessionId = null;
-    currentSessionId = null;
-    
-    // Remove the closed message overlay
-    const closedMessage = document.querySelector('.chat-closed-message');
-    if (closedMessage) {
-        closedMessage.remove();
-    }
-    
-    // Show the start chat form
-    const chatInterface = document.getElementById('chatInterface');
-    if (chatInterface) {
-        chatInterface.innerHTML = `
-            <div class="chat-start-form">
-                <h4>Start a New Chat Session</h4>
-                <form id="startChatForm">
-                    <div class="form-group">
-                        <label for="name">Your Name</label>
-                        <input type="text" id="name" name="name" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="email">Email (Optional)</label>
-                        <input type="email" id="email" name="email">
-                    </div>
-                    <button type="submit" class="btn btn-primary">Start Chat</button>
-                </form>
-            </div>
-        `;
-        
-        // Re-attach the form event listener
-        document.getElementById('startChatForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            
-            try {
-                const response = await fetch('/chat/start-session', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    sessionId = result.session_id;
-                    location.reload(); // Reload to show chat interface
-                } else {
-                    alert(result.error || 'Failed to start chat');
-                }
-            } catch (error) {
-                console.error('Error starting chat:', error);
-                alert('Failed to connect. Please try again.');
-            }
-        });
-    }
-}
-
 function playNotificationSound() {
     // Optional: Add notification sound
     // const audio = new Audio('/assets/sounds/notification.mp3');
     // audio.play();
 }
-
-// Check if session is closed on page load
-async function checkSessionStatus() {
-    // Get sessionId from global scope or from currentSessionId
-    const sessionToCheck = getSessionId();
-    const userTypeToCheck = getUserType();
-    
-    if (sessionToCheck && userTypeToCheck === 'customer') {
-        try {
-            const response = await fetch(`/chat/check-session-status/${sessionToCheck}`);
-            const result = await response.json();
-            
-            if (result.status === 'closed') {
-                console.log('Session is closed, disabling chat');
-                disableChatInput();
-                showChatClosedMessage();
-                displaySystemMessage('This chat session has been closed by the support team.');
-                return false; // Session is closed
-            }
-            return true; // Session is active
-        } catch (error) {
-            console.error('Error checking session status:', error);
-            return true; // Assume active on error
-        }
-    }
-    return true; // No session ID or not customer
-}
-
-
 
 // Canned responses
 function showCannedResponses() {
@@ -809,22 +948,19 @@ function displayCannedResponsesModal(responses) {
 
 async function sendCannedResponse(responseId) {
     try {
-        // First get the response content
         const response = await fetch(`/admin/canned-responses/get/${responseId}`);
         const responseData = await response.json();
         
         if (responseData.content) {
-            // Send the message through WebSocket
             if (ws && ws.readyState === WebSocket.OPEN) {
-                // Get session ID from available sources
-                const currentSession = typeof sessionId !== 'undefined' ? sessionId : (typeof currentSessionId !== 'undefined' ? currentSessionId : null);
+                const currentSession = getSessionId();
                 
                 ws.send(JSON.stringify({
                     type: 'message',
                     session_id: currentSession,
                     message: responseData.content,
-                    sender_type: userType,
-                    sender_id: typeof userId !== 'undefined' ? userId : null
+                    sender_type: getUserType(),
+                    sender_id: getUserId()
                 }));
             }
         }
@@ -833,389 +969,20 @@ async function sendCannedResponse(responseId) {
     }
 }
 
-// Customer satisfaction rating
-function showRatingModal(sessionId) {
-    const modal = document.createElement('div');
-    modal.className = 'rating-modal';
-    modal.innerHTML = `
-        <div class="modal-content">
-            <h3>Rate Your Experience</h3>
-            <div class="rating-stars">
-                ${[1,2,3,4,5].map(i => `
-                    <span class="star" data-rating="${i}" onclick="selectRating(${i})">★</span>
-                `).join('')}
-            </div>
-            <textarea placeholder="Additional feedback (optional)" id="ratingFeedback"></textarea>
-            <div class="modal-actions">
-                <button onclick="submitRating('${sessionId}')">Submit</button>
-                <button onclick="this.parentElement.parentElement.parentElement.remove()">Skip</button>
-            </div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-}
-
-function selectRating(rating) {
-    document.querySelectorAll('.star').forEach((star, index) => {
-        star.classList.toggle('selected', index < rating);
-    });
-    window.selectedRating = rating;
-}
-
-async function submitRating(sessionId) {
-    const rating = window.selectedRating;
-    const feedback = document.getElementById('ratingFeedback').value;
-    
-    if (!rating) {
-        alert('Please select a rating');
-        return;
-    }
-    
-    try {
-        const response = await fetch('/chat/rate-session', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded',
-            },
-            body: `session_id=${sessionId}&rating=${rating}&feedback=${encodeURIComponent(feedback)}`
-        });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            document.querySelector('.rating-modal').remove();
-            displaySystemMessage('Thank you for your feedback!');
-        }
-    } catch (error) {
-        console.error('Error submitting rating:', error);
-    }
-}
-
-
-
-// Initialize WebSocket on page load
-document.addEventListener('DOMContentLoaded', async function() {
-    // Clear displayed messages on page load
-    displayedMessages.clear();
-    
-    // Only initialize WebSocket if we're on a chat page
-    const chatInterface = safeGetElement('chatInterface');
-    const messagesContainer = safeGetElement('messagesContainer');
-    
-    if (chatInterface || messagesContainer) {
-        const sessionActive = await checkSessionStatus();
-        if (sessionActive) {
-            initWebSocket();
-        }
-    } else {
-        console.log('Not on a chat page, skipping WebSocket initialization');
-    }
-});
-
-// Enhanced WebSocket with reconnection and heartbeat
-class EnhancedWebSocket {
-    constructor(url) {
-        this.url = url;
-        this.ws = null;
-        this.reconnectAttempts = 0;
-        this.maxReconnectAttempts = 5;
-        this.reconnectInterval = 1000;
-        this.heartbeatInterval = null;
-        this.messageQueue = [];
-        this.connect();
-    }
-    
-    connect() {
-        try {
-            this.ws = new WebSocket(this.url);
-            this.setupEventHandlers();
-            this.updateConnectionStatus('connecting');
-        } catch (error) {
-            console.error('WebSocket connection failed:', error);
-            this.scheduleReconnect();
-        }
-    }
-    
-    setupEventHandlers() {
-        this.ws.onopen = () => {
-            console.log('WebSocket connected');
-            this.updateConnectionStatus('connected');
-            this.reconnectAttempts = 0;
-            this.startHeartbeat();
-            this.flushMessageQueue();
-            
-            if (this.onopen) this.onopen();
-        };
-        
-        this.ws.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.type === 'pong') {
-                return; // Heartbeat response
-            }
-            if (this.onmessage) this.onmessage(event);
-        };
-        
-        this.ws.onclose = () => {
-            console.log('WebSocket disconnected');
-            this.updateConnectionStatus('disconnected');
-            this.stopHeartbeat();
-            this.scheduleReconnect();
-            
-            if (this.onclose) this.onclose();
-        };
-        
-        this.ws.onerror = (error) => {
-            console.error('WebSocket error:', error);
-            if (this.onerror) this.onerror(error);
-        };
-    }
-    
-    send(data) {
-        if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-            this.ws.send(data);
-        } else {
-            // Queue message for when connection is restored
-            this.messageQueue.push(data);
-        }
-    }
-    
-    scheduleReconnect() {
-        if (this.reconnectAttempts < this.maxReconnectAttempts) {
-            this.updateConnectionStatus('reconnecting');
-            setTimeout(() => {
-                this.reconnectAttempts++;
-                this.connect();
-            }, this.reconnectInterval * Math.pow(2, this.reconnectAttempts));
-        }
-    }
-    
-    startHeartbeat() {
-        this.heartbeatInterval = setInterval(() => {
-            if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-                this.ws.send(JSON.stringify({ type: 'ping' }));
-            }
-        }, 30000); // 30 seconds
-    }
-    
-    stopHeartbeat() {
-        if (this.heartbeatInterval) {
-            clearInterval(this.heartbeatInterval);
-            this.heartbeatInterval = null;
-        }
-    }
-    
-    flushMessageQueue() {
-        while (this.messageQueue.length > 0) {
-            this.send(this.messageQueue.shift());
-        }
-    }
-    
-    updateConnectionStatus(status) {
-        const statusElement = safeGetElement('connectionStatus');
-        if (statusElement) {
-            statusElement.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-            statusElement.className = `status-indicator ${status}`;
-        }
-        
-        // Show connection notification
-        showConnectionNotification(status);
-    }
-    
-    close() {
-        this.stopHeartbeat();
-        if (this.ws) {
-            this.ws.close();
-        }
-    }
-}
-
-
-
-// Enhanced message display with read receipts
-function displayMessageEnhanced(data) {
-    const container = document.getElementById('messagesContainer');
-    if (!container) return;
-    
-    const messageId = `msg_${data.id || Date.now()}`;
-    const messageDiv = document.createElement('div');
-    messageDiv.className = `message ${data.sender_type}`;
-    messageDiv.setAttribute('data-message-id', messageId);
-    
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    
-    bubble.textContent = data.message;
-    
-    const time = document.createElement('div');
-    time.className = 'message-time';
-    time.textContent = formatTime(data.timestamp);
-    
-    // Add read receipt for sent messages
-    if (data.sender_type === userType && userType !== 'system') {
-        const status = document.createElement('div');
-        status.className = 'message-status sent';
-        time.appendChild(status);
-    }
-    
-    bubble.appendChild(time);
-    messageDiv.appendChild(bubble);
-    container.appendChild(messageDiv);
-    
-    container.scrollTop = container.scrollHeight;
-    
-    // Mark message as delivered after a short delay
-    if (data.sender_type !== userType) {
-        setTimeout(() => markMessageAsRead(messageId), 1000);
-    }
-}
-
-
-
-// Enhanced typing indicator with user names
-function handleTypingIndicatorEnhanced(data) {
-    const container = document.getElementById('messagesContainer');
-    const indicator = document.getElementById('typingIndicator');
-    
-    if (!container || !indicator) return;
-    
-    if (data.is_typing && data.user_type !== userType) {
-        const userName = data.user_name || (data.user_type === 'agent' ? 'Agent' : 'Customer');
-        indicator.innerHTML = `
-            <div class="typing-indicator-enhanced">
-                <span>${userName} is typing</span>
-                <div class="typing-dots">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </div>
-            </div>
-        `;
-        indicator.style.display = 'block';
-        container.scrollTop = container.scrollHeight;
-    } else {
-        indicator.style.display = 'none';
-    }
-}
-
-// Customer information panel
-
-
-// Notification system
-function showNotification(message, type = 'info', duration = 3000) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${type}`;
-    notification.textContent = message;
-    
-    // Position notification
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        padding: 12px 24px;
-        border-radius: 6px;
-        color: white;
-        font-weight: 500;
-        z-index: 10000;
-        opacity: 0;
-        transform: translateX(100%);
-        transition: all 0.3s ease;
-    `;
-    
-    // Set background color based on type
-    const colors = {
-        success: '#28a745',
-        error: '#dc3545',
-        warning: '#ffc107',
-        info: '#17a2b8'
-    };
-    
-    notification.style.backgroundColor = colors[type] || colors.info;
-    
-    document.body.appendChild(notification);
-    
-    // Animate in
-    setTimeout(() => {
-        notification.style.opacity = '1';
-        notification.style.transform = 'translateX(0)';
-    }, 100);
-    
-    // Auto remove
-    setTimeout(() => {
-        notification.style.opacity = '0';
-        notification.style.transform = 'translateX(100%)';
-        setTimeout(() => {
-            if (notification.parentNode) {
-                notification.parentNode.removeChild(notification);
-            }
-        }, 300);
-    }, duration);
-}
-
-function showConnectionNotification(status) {
-    const messages = {
-        connecting: 'Connecting to chat server...',
-        connected: 'Connected to chat server',
-        disconnected: 'Disconnected from chat server',
-        reconnecting: 'Reconnecting...'
-    };
-    
-    const types = {
-        connecting: 'info',
-        connected: 'success',
-        disconnected: 'error',
-        reconnecting: 'warning'
-    };
-    
-    if (messages[status]) {
-        showNotification(messages[status], types[status], 2000);
-    }
-}
-
-// Utility functions
-function getCurrentSessionId() {
-    return getSessionId();
-}
-
-function formatDate(dateString) {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
-    });
-}
-
-function markMessageAsRead(messageId) {
-    // Send read receipt via WebSocket
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({
-            type: 'message_read',
-            message_id: messageId,
-            session_id: getCurrentSessionId()
-        }));
-    }
-}
-
-function updateMessageStatus(messageId, status) {
-    const messageElement = document.querySelector(`[data-message-id="${messageId}"]`);
-    if (messageElement) {
-        const statusElement = messageElement.querySelector('.message-status');
-        if (statusElement) {
-            statusElement.className = `message-status ${status}`;
-        }
-    }
-}
-
 // Quick actions for common responses
 function initQuickActions() {
     const chatInputArea = document.querySelector('.chat-input-area');
-    if (!chatInputArea || userType !== 'agent') return;
+    if (!chatInputArea || getUserType() !== 'agent') return;
+    
+    // Remove existing quick actions to prevent duplicates
+    const existingQuickActions = chatInputArea.querySelector('.quick-actions');
+    if (existingQuickActions) {
+        existingQuickActions.remove();
+    }
     
     const quickActions = document.createElement('div');
     quickActions.className = 'quick-actions';
+    
     // Load canned responses from database
     fetch('/admin/canned-responses/get-all')
         .then(response => response.json())
@@ -1225,7 +992,6 @@ function initQuickActions() {
             ).join('');
         })
         .catch(error => {
-            console.error('Error loading canned responses:', error);
             // Fallback to default responses
             quickActions.innerHTML = `
                 <button class="quick-action-btn" onclick="sendQuickResponse('greeting')">👋 Greeting</button>
@@ -1245,75 +1011,57 @@ async function sendQuickResponse(type) {
     };
     
     const message = responses[type];
-    if (message && getCurrentSessionId()) {
-        // Send via WebSocket
+    if (message && getSessionId()) {
         if (ws && ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({
                 type: 'message',
-                session_id: getCurrentSessionId(),
+                session_id: getSessionId(),
                 message: message,
-                sender_type: userType,
-                sender_id: userId
+                sender_type: getUserType(),
+                sender_id: getUserId()
             }));
         }
     }
 }
 
-// Initialize all enhanced features
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('DOM loaded, initializing chat system...');
+// Initialize WebSocket on page load
+document.addEventListener('DOMContentLoaded', async function() {
+    displayedMessages.clear();
     
-    // Check if we're on a chat-related page
-    const chatInterface = document.getElementById('chatInterface');
-    const messagesContainer = document.getElementById('messagesContainer');
+    const chatInterface = safeGetElement('chatInterface');
+    const messagesContainer = safeGetElement('messagesContainer');
+    const adminDashboard = safeGetElement('admin-dashboard');
     
-    if (chatInterface || messagesContainer) {
-        console.log('Chat interface detected, initializing WebSocket...');
-        
-        // Initialize WebSocket
-        initWebSocket();
-        
-        // Check session status for customers
-        const userType = getUserType();
-        if (userType === 'customer') {
-            checkSessionStatus();
-        }
-        
-        // Initialize quick actions for agents
-        if (userType === 'agent') {
+    // Check if we're on a chat page (customer or admin)
+    if (chatInterface || messagesContainer || adminDashboard) {
+        // For admin interface, always initialize WebSocket
+        if (getUserType() === 'agent') {
+            initWebSocket();
+            
+            // Start auto-refresh for admin sessions
+            startAdminAutoRefresh();
+            
+            // Ensure admin interface doesn't show "chat ended" messages
+            const closedMessage = document.querySelector('.chat-closed-message');
+            if (closedMessage) {
+                closedMessage.remove();
+            }
+            
             setTimeout(() => {
+                // Initialize quick actions for agents only
                 initQuickActions();
-            }, 1000);
-        }
-    } else {
-        console.log('No chat interface detected, skipping WebSocket initialization');
-    }
-});
-
-// Handle page visibility change for connection management
-document.addEventListener('visibilitychange', function() {
-    if (document.hidden) {
-        // Page is hidden, reduce connection activity
-        if (ws && typeof ws.stopHeartbeat === 'function') {
-            ws.stopHeartbeat();
-        }
-    } else {
-        // Page is visible, resume full activity
-        if (ws && typeof ws.startHeartbeat === 'function') {
-            ws.startHeartbeat();
+            }, 500);
+        } else {
+            // For customer interface, check session status
+            const sessionActive = await checkSessionStatus();
+            if (sessionActive) {
+                initWebSocket();
+                
+                // Wait a moment for WebSocket to connect before initializing form
+                setTimeout(() => {
+                    initializeMessageForm();
+                }, 500);
+            }
         }
     }
 });
-
-// Handle browser back/forward buttons
-window.addEventListener('popstate', function(event) {
-    // Handle navigation state if needed
-    if (currentSessionId && event.state && event.state.sessionId !== currentSessionId) {
-        // Session changed, update UI accordingly
-        currentSessionId = event.state.sessionId;
-        if (currentSessionId) {
-            loadChatHistoryForSession(currentSessionId);
-        }
-    }
-});
-}

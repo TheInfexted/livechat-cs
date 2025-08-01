@@ -135,14 +135,19 @@ class ChatServer implements MessageComponentInterface
     
     protected function handleMessage($from, $data)
     {
+        echo "Handling message: " . json_encode($data) . "\n";
+        
         $sessionId = $data['session_id'];
         $message = $data['message'];
         $senderType = $data['sender_type'];
         $senderId = $data['sender_id'] ?? null;
         
+        echo "Session ID: $sessionId, Message: $message, Sender: $senderType\n";
+        
         // Get chat session using PDO
         $this->ensureDatabaseConnection();
         if (!$this->pdo) {
+            echo "ERROR: No database connection\n";
             return;
         }
         
@@ -151,16 +156,28 @@ class ChatServer implements MessageComponentInterface
         $chatSession = $stmt->fetch();
         
         if (!$chatSession) {
+            echo "ERROR: Chat session not found for session ID: $sessionId\n";
             return;
         }
         
+        echo "Found chat session: " . json_encode($chatSession) . "\n";
+        
         // Save message to database
+        echo "Saving message to database...\n";
         $stmt = $this->pdo->prepare("
             INSERT INTO messages (session_id, sender_type, sender_id, message, created_at) 
             VALUES (?, ?, ?, ?, NOW())
         ");
-        $stmt->execute([$chatSession['id'], $senderType, $senderId, $message]);
+        $result = $stmt->execute([$chatSession['id'], $senderType, $senderId, $message]);
+        
+        if (!$result) {
+            echo "ERROR: Failed to save message to database\n";
+            echo "Error info: " . json_encode($stmt->errorInfo()) . "\n";
+            return;
+        }
+        
         $messageId = $this->pdo->lastInsertId();
+        echo "Message saved with ID: $messageId\n";
         
         // Get the actual timestamp from the database
         $stmt = $this->pdo->prepare("
@@ -168,6 +185,7 @@ class ChatServer implements MessageComponentInterface
         ");
         $stmt->execute([$messageId]);
         $timestamp = $stmt->fetchColumn();
+        echo "Message timestamp: $timestamp\n";
         
         // Prepare response
         $response = [

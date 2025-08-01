@@ -204,76 +204,6 @@ class AdminController extends General
         return $this->jsonResponse(['error' => 'Failed to delete agent'], 500);
     }
     
-    public function reports()
-    {
-        if (!$this->isAuthenticated()) {
-            return redirect()->to('/login');
-        }
-        
-        // Initialize analytics
-        $analytics = new \App\Libraries\ChatAnalytics();
-        
-        // Get date range from request or use defaults
-        $dateFrom = $this->request->getGet('date_from') ?: date('Y-m-d', strtotime('-30 days'));
-        $dateTo = $this->request->getGet('date_to') ?: date('Y-m-d');
-        
-        // Get analytics data
-        $stats = $analytics->getDashboardStats($dateFrom, $dateTo);
-        $hourlyData = $analytics->getHourlyDistribution($dateFrom, $dateTo);
-        $topAgents = $analytics->getTopPerformingAgents(10);
-        
-        // Get additional analytics
-        $sessionTrends = $analytics->getSessionTrends(30);
-        $satisfactionTrends = $analytics->getCustomerSatisfactionTrends(30);
-        $responseTimeAnalysis = $analytics->getResponseTimeAnalysis(30);
-        $busiestHours = $analytics->getBusiestHours(7);
-        
-        // Get additional stats
-        $totalAgents = $this->userModel->whereIn('role', ['admin', 'support'])->countAllResults();
-        $onlineAgents = $this->userModel->where('is_online', 1)->whereIn('role', ['admin', 'support'])->countAllResults();
-        
-        // Recent sessions
-        $recentSessions = $this->chatModel->select('chat_sessions.*, users.username as agent_name')
-            ->join('users', 'users.id = chat_sessions.agent_id', 'left')
-            ->orderBy('chat_sessions.created_at', 'DESC')
-            ->limit(10)
-            ->findAll();
-        
-        $data = [
-            'title' => 'Chat Reports & Analytics',
-            'user' => $this->getCurrentUser(),
-            'stats' => $stats,
-            'hourlyData' => $hourlyData,
-            'topAgents' => $topAgents,
-            'sessionTrends' => $sessionTrends,
-            'satisfactionTrends' => $satisfactionTrends,
-            'responseTimeAnalysis' => $responseTimeAnalysis,
-            'busiestHours' => $busiestHours,
-            'totalAgents' => $totalAgents,
-            'onlineAgents' => $onlineAgents,
-            'recentSessions' => $recentSessions,
-            'dateFrom' => $dateFrom,
-            'dateTo' => $dateTo
-        ];
-        
-        return view('admin/reports', $data);
-    }
-
-    // Advanced analytics
-    public function analytics()
-    {
-        if (!$this->isAuthenticated()) {
-            return redirect()->to('/login');
-        }
-
-        $data = [
-            'title' => 'Chat Analytics',
-            'user' => $this->getCurrentUser()
-        ];
-
-        return view('admin/analytics', $data);
-    }
-
     // Manage canned responses
     public function cannedResponses()
     {
@@ -364,6 +294,22 @@ class AdminController extends General
         ];
 
         return view('admin/settings', $data);
+    }
+
+    // Get sessions data for real-time updates
+    public function sessionsData()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $waitingSessions = $this->chatModel->getWaitingSessions();
+        $activeSessions = $this->chatModel->getActiveSessions();
+
+        return $this->jsonResponse([
+            'waitingSessions' => $waitingSessions,
+            'activeSessions' => $activeSessions
+        ]);
     }
 
     private function getSystemSettings()
