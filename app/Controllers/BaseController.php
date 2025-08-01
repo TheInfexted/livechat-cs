@@ -35,24 +35,33 @@ abstract class BaseController extends Controller
      *
      * @var list<string>
      */
-    protected $helpers = [];
+    protected $helpers = ['url', 'form'];
+
+    // Models
+    protected $chatModel;
+    protected $userModel;
+    protected $messageModel;
 
     /**
      * Be sure to declare properties for any property fetch you initialized.
      * The creation of dynamic property is deprecated in PHP 8.2.
      */
-    // protected $session;
+    protected $session;
+    
 
     /**
      * @return void
      */
     public function initController(RequestInterface $request, ResponseInterface $response, LoggerInterface $logger)
     {
-        // Do Not Edit This Line
         parent::initController($request, $response, $logger);
 
-        // Preload any models, libraries, etc, here.
-
-        // E.g.: $this->session = service('session');
+        // Initialize session
+        $this->session = \Config\Services::session();
+        
+        // Initialize models
+        $this->chatModel = new \App\Models\ChatModel();
+        $this->userModel = new \App\Models\UserModel();
+        $this->messageModel = new \App\Models\MessageModel();
     }
 }
