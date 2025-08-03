@@ -349,6 +349,19 @@ function displaySystemMessage(message) {
     container.scrollTop = container.scrollHeight;
 }
 
+function updateConnectingMessage(newMessage) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    // Find the initial "Connecting to support..." message
+    const systemMessages = container.querySelectorAll('.message.system p');
+    systemMessages.forEach(p => {
+        if (p.textContent.includes('Connecting to support')) {
+            p.textContent = newMessage;
+        }
+    });
+}
+
 function disableChatInput() {
     const input = document.getElementById('messageInput');
     const button = document.querySelector('.btn-send');
@@ -518,6 +531,8 @@ function handleWebSocketMessage(data) {
             const connectedUserType = getUserType();
             if (connectedSession) {
                 if (connectedUserType === 'customer') {
+                    // Update the initial "Connecting to support..." message
+updateConnectingMessage('Connected to Chat');
                     loadChatHistory();
                 } else if (connectedUserType === 'agent' && currentSessionId) {
                     loadChatHistoryForSession(currentSessionId);

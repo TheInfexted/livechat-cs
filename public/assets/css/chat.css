@@ -19,10 +19,10 @@ body {
     border-radius: 12px;
     box-shadow: 0 5px 30px rgba(0, 0, 0, 0.1);
     overflow: hidden;
-    height: 600px;
+    height: auto; /* Increased to accommodate quick actions */
     display: flex;
     flex-direction: column;
-    max-height: 80vh;
+    max-height: 85vh; /* Slightly increased max height */
 }
 
 .chat-header {
@@ -107,9 +107,9 @@ body {
     padding: 20px;
     overflow-y: auto;
     background: #fafbfc;
-    min-height: 0; /* Important for flex child to respect parent height */
-    max-height: 450px; /* Give more space for messages */
-    min-height: 450px; /* Reasonable minimum height */
+    min-height: 400px;
+    max-height: 500px;
+    height: 500px;
 }
 
 .message {
@@ -208,7 +208,7 @@ body {
 
 /* Chat Input */
 .chat-input-area {
-    padding: 20px;
+    padding: 5px;
     background: white;
     border-top: 1px solid #e1e8ed;
     flex-shrink: 0; /* Prevent input area from shrinking */
@@ -449,8 +449,15 @@ body {
     .chat-container {
         margin: 0;
         max-width: 100%;
-        height: 100vh;
+        height: auto;
+        min-height: 100vh;
         border-radius: 0;
+        max-height: none;
+    }
+    
+    .messages-container {
+        min-height: 200px;
+        max-height: 60vh;
     }
     
     .dashboard-content {
@@ -944,4 +951,59 @@ body {
     background: #667eea;
     color: white;
     border-color: #667eea;
+}
+
+/* Quick Actions Toolbar (Customer) */
+.quick-actions-toolbar {
+    padding: 0px;
+    background: #f8f9fa;
+    border-top: 1px solid #e9ecef;
+    padding: 12px 20px;
+    flex-shrink: 0;
+}
+
+.quick-actions-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.quick-actions-buttons .quick-action-btn {
+    background: #667eea;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: capitalize;
+}
+
+.quick-actions-buttons .quick-action-btn:hover {
+    background: #5a6fd8;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.quick-actions-buttons .quick-action-btn:active {
+    transform: translateY(0);
+}
+
+/* Show quick actions button in chat input area */
+.show-quick-actions-btn {
+    background: #17a2b8;
+    color: white;
+    border: none;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    cursor: pointer;
+    margin-left: 8px;
+    transition: all 0.2s;
+}
+
+.show-quick-actions-btn:hover {
+    background: #138496;
 }

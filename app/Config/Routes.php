@@ -21,6 +21,7 @@ $routes->get('/chat/check-session-status/(:segment)', 'ChatController::checkSess
 $routes->post('/chat/rate-session', 'ChatController::rateSession');
 $routes->post('/chat/canned-response', 'ChatController::sendCannedResponse');
 $routes->get('/chat/customer-history/(:segment)', 'ChatController::getCustomerHistory/$1');
+$routes->get('/chat/quick-actions', 'ChatController::getQuickActions');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
 $routes->post('/admin/close-inactive', 'ChatController::closeInactiveSessions');
 
@@ -38,6 +39,13 @@ $routes->group('admin', ['filter' => 'authfilter'], function($routes) {
     $routes->get('canned-responses/get-all', 'AdminController::getAllCannedResponses');
     $routes->post('canned-responses/save', 'AdminController::saveCannedResponse');
     $routes->post('canned-responses/delete', 'AdminController::deleteCannedResponse');
+    
+    // Keyword responses routes
+    $routes->get('keyword-responses', 'AdminController::keywordResponses');
+    $routes->get('get-keyword-response/(:segment)', 'AdminController::getKeywordResponse/$1');
+    $routes->post('save-keyword-response', 'AdminController::saveKeywordResponse');
+    $routes->post('delete-keyword-response', 'AdminController::deleteKeywordResponse');
+    
     $routes->get('sessions-data', 'AdminController::sessionsData');
     $routes->get('settings', 'AdminController::settings');
     $routes->post('settings/save', 'AdminController::saveSettings');

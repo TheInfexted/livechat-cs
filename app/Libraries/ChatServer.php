@@ -60,7 +60,6 @@ class ChatServer implements MessageComponentInterface
     public function onOpen(ConnectionInterface $conn)
     {
         $this->clients->attach($conn);
-        echo "New connection! ({$conn->resourceId})\n";
     }
     
     public function onMessage(ConnectionInterface $from, $msg)
@@ -97,11 +96,8 @@ class ChatServer implements MessageComponentInterface
         $sessionId = $data['session_id'];
         $userType = $data['user_type'] ?? 'customer';
         
-        echo "Registering connection: Session ID = '$sessionId', User Type = '$userType'\n";
-        
         // Validate session ID
         if (empty($sessionId)) {
-            echo "ERROR: Empty session ID received\n";
             $conn->send(json_encode([
                 'type' => 'error',
                 'message' => 'Invalid session ID'
@@ -119,8 +115,6 @@ class ChatServer implements MessageComponentInterface
             'user_id' => $data['user_id'] ?? null
         ];
         
-        echo "Sessions for '$sessionId': " . count($this->sessions[$sessionId]) . " connections\n";
-        
         // Send connection success
         $conn->send(json_encode([
             'type' => 'connected',
@@ -135,19 +129,14 @@ class ChatServer implements MessageComponentInterface
     
     protected function handleMessage($from, $data)
     {
-        echo "Handling message: " . json_encode($data) . "\n";
-        
         $sessionId = $data['session_id'];
         $message = $data['message'];
         $senderType = $data['sender_type'];
         $senderId = $data['sender_id'] ?? null;
         
-        echo "Session ID: $sessionId, Message: $message, Sender: $senderType\n";
-        
         // Get chat session using PDO
         $this->ensureDatabaseConnection();
         if (!$this->pdo) {
-            echo "ERROR: No database connection\n";
             return;
         }
         
@@ -156,14 +145,10 @@ class ChatServer implements MessageComponentInterface
         $chatSession = $stmt->fetch();
         
         if (!$chatSession) {
-            echo "ERROR: Chat session not found for session ID: $sessionId\n";
             return;
         }
         
-        echo "Found chat session: " . json_encode($chatSession) . "\n";
-        
         // Save message to database
-        echo "Saving message to database...\n";
         $stmt = $this->pdo->prepare("
             INSERT INTO messages (session_id, sender_type, sender_id, message, created_at) 
             VALUES (?, ?, ?, ?, NOW())
@@ -171,13 +156,10 @@ class ChatServer implements MessageComponentInterface
         $result = $stmt->execute([$chatSession['id'], $senderType, $senderId, $message]);
         
         if (!$result) {
-            echo "ERROR: Failed to save message to database\n";
-            echo "Error info: " . json_encode($stmt->errorInfo()) . "\n";
             return;
         }
         
         $messageId = $this->pdo->lastInsertId();
-        echo "Message saved with ID: $messageId\n";
         
         // Get the actual timestamp from the database
         $stmt = $this->pdo->prepare("
@@ -185,7 +167,6 @@ class ChatServer implements MessageComponentInterface
         ");
         $stmt->execute([$messageId]);
         $timestamp = $stmt->fetchColumn();
-        echo "Message timestamp: $timestamp\n";
         
         // Prepare response
         $response = [
@@ -200,12 +181,14 @@ class ChatServer implements MessageComponentInterface
         
         // Send to all connections in this session
         if (isset($this->sessions[$sessionId])) {
-            echo "Sending message to " . count($this->sessions[$sessionId]) . " connections in session $sessionId\n";
             foreach ($this->sessions[$sessionId] as $client) {
                 $client['connection']->send(json_encode($response));
             }
-        } else {
-            echo "No connections found for session $sessionId\n";
+        }
+        
+        // Check for automated keyword responses (only for customer messages and when no agent is assigned)
+        if ($senderType === 'customer' && ($chatSession['status'] === 'waiting' || $chatSession['agent_id'] === null)) {
+            $this->checkAndSendAutomatedReply($sessionId, $message, $chatSession);
         }
         
         // Notify other agents if customer is waiting
@@ -377,6 +360,76 @@ class ChatServer implements MessageComponentInterface
 
     
 
+    
+    protected function checkAndSendAutomatedReply($sessionId, $message, $chatSession)
+    {
+        try {
+            // Ensure database connection
+            $this->ensureDatabaseConnection();
+            if (!$this->pdo) {
+                return;
+            }
+            
+            // Convert message to lowercase for case-insensitive matching
+            $messageToCheck = strtolower($message);
+            
+            // Check if keywords_responses table exists
+            $tableCheckStmt = $this->pdo->prepare("SHOW TABLES LIKE 'keywords_responses'");
+            $tableCheckStmt->execute();
+            if (!$tableCheckStmt->fetch()) {
+                return;
+            }
+            
+            // Check for keyword matches
+            $stmt = $this->pdo->prepare("SELECT keyword, response FROM keywords_responses");
+            $stmt->execute();
+            $keywordResponses = $stmt->fetchAll();
+            
+            foreach ($keywordResponses as $keywordResponse) {
+                $keyword = strtolower($keywordResponse['keyword']);
+                
+                // Check if the message contains the keyword
+                if (strpos($messageToCheck, $keyword) !== false) {
+                    // Save automated response to database as agent
+                    $autoResponseStmt = $this->pdo->prepare("
+                        INSERT INTO messages (session_id, sender_type, sender_id, message, created_at) 
+                        VALUES (?, 'agent', NULL, ?, NOW())
+                    ");
+                    $autoResponseStmt->execute([$chatSession['id'], $keywordResponse['response']]);
+                    
+                    $autoMessageId = $this->pdo->lastInsertId();
+                    
+                    // Get timestamp
+                    $timestampStmt = $this->pdo->prepare("SELECT created_at FROM messages WHERE id = ?");
+                    $timestampStmt->execute([$autoMessageId]);
+                    $timestamp = $timestampStmt->fetchColumn();
+                    
+                    // Prepare automated response (but send as 'agent' to display correctly)
+                    $autoResponse = [
+                        'type' => 'message',
+                        'id' => $autoMessageId,
+                        'session_id' => $sessionId,
+                        'sender_type' => 'agent',
+                        'message' => '[AutoBot] ' . $keywordResponse['response'],
+                        'timestamp' => $timestamp,
+                        'sender_name' => 'AutoBot'
+                    ];
+                    
+                    // Send automated response to all connections in session
+                    if (isset($this->sessions[$sessionId])) {
+                        foreach ($this->sessions[$sessionId] as $client) {
+                            $client['connection']->send(json_encode($autoResponse));
+                        }
+                    }
+                    
+                    // Only send one automated reply per message to avoid spam
+                    break;
+                }
+            }
+        } catch (\Exception $e) {
+            // Silently handle errors to prevent server crashes
+        }
+    }
     
     protected function handleBulkMessage($from, $data)
     {

@@ -37,6 +37,13 @@
                 <span></span>
             </div>
             
+            <!-- Quick Action Toolbar -->
+            <div class="quick-actions-toolbar" id="quickActionsToolbar">
+                <div class="quick-actions-buttons" id="quickActionsButtons">
+                    <!-- Quick action buttons will be loaded here -->
+                </div>
+            </div>
+            
             <div class="chat-input-area">
                 <form id="messageForm">
                     <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
@@ -53,6 +60,41 @@
     let sessionId = '<?= $session_id ?? '' ?>';
     let currentSessionId = null;
     
+    // Load quick actions when page loads
+    document.addEventListener('DOMContentLoaded', function() {
+        if (sessionId) {
+            fetchQuickActions();
+        }
+    });
+
+    function fetchQuickActions() {
+        fetch('/chat/quick-actions')
+            .then(response => response.json())
+            .then(data => {
+                const quickActionsButtons = document.getElementById('quickActionsButtons');
+                quickActionsButtons.innerHTML = '';
+
+                data.forEach(action => {
+                    const btn = document.createElement('button');
+                    btn.classList.add('quick-action-btn');
+                    btn.textContent = action.display_name;
+                    btn.onclick = () => sendQuickMessage(action.keyword);
+                    quickActionsButtons.appendChild(btn);
+                });
+            })
+            .catch(error => console.error('Error fetching quick actions:', error));
+    }
+
+    function sendQuickMessage(keyword) {
+        const messageInput = document.getElementById('messageInput');
+        messageInput.value = keyword;
+        
+        // Trigger the form submission to send the message
+        const messageForm = document.getElementById('messageForm');
+        if (messageForm) {
+            messageForm.dispatchEvent(new Event('submit'));
+        }
+    }
 
 </script>
 <?= $this->endSection() ?>

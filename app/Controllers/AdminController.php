@@ -204,6 +204,74 @@ class AdminController extends General
         return $this->jsonResponse(['error' => 'Failed to delete agent'], 500);
     }
     
+    // Manage automated keyword responses
+    public function keywordResponses()
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->to('/login');
+        }
+
+        $data = [
+            'title' => 'Automated Responses',
+            'responses' => $this->keywordResponseModel->findAll()
+        ];
+
+        return view('admin/keyword-responses', $data);
+    }
+
+    // Get keyword response for editing
+    public function getKeywordResponse($id)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $response = $this->keywordResponseModel->find($id);
+        if (!$response) {
+            return $this->jsonResponse(['error' => 'Response not found'], 404);
+        }
+        return $this->jsonResponse($response);
+    }
+
+    // Save keyword response
+    public function saveKeywordResponse()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $id = $this->request->getPost('id');
+        $data = [
+            'keyword' => $this->request->getPost('keyword'),
+            'response' => $this->request->getPost('response'),
+            'is_active' => $this->request->getPost('is_active') ? 1 : 0
+        ];
+
+        if ($id) {
+            // Update existing
+            $this->keywordResponseModel->update($id, $data);
+            session()->setFlashdata('success', 'Response updated successfully');
+        } else {
+            // Create new
+            $this->keywordResponseModel->insert($data);
+            session()->setFlashdata('success', 'Response created successfully');
+        }
+
+        return redirect()->to('admin/keyword-responses');
+    }
+
+    // Delete keyword response
+    public function deleteKeywordResponse()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $id = $this->request->getPost('id');
+        $this->keywordResponseModel->delete($id);
+        return $this->jsonResponse(['success' => true]);
+    }
+
     // Manage canned responses
     public function cannedResponses()
     {

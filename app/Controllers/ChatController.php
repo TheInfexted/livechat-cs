@@ -199,6 +199,30 @@ class ChatController extends General
 
         return $this->jsonResponse($agents);
     }
+    
+    // Get active keyword responses for quick actions
+    public function getQuickActions()
+    {
+        if (!isset($this->keywordResponseModel)) {
+            $this->keywordResponseModel = new \App\Models\KeywordResponseModel();
+        }
+        
+        $activeResponses = $this->keywordResponseModel->where('is_active', 1)
+                                                    ->orderBy('keyword', 'ASC')
+                                                    ->findAll();
+        
+        // Format for frontend
+        $quickActions = [];
+        foreach ($activeResponses as $response) {
+            $quickActions[] = [
+                'id' => $response['id'],
+                'keyword' => $response['keyword'],
+                'display_name' => ucfirst($response['keyword'])
+            ];
+        }
+        
+        return $this->jsonResponse($quickActions);
+    }
 
 
 

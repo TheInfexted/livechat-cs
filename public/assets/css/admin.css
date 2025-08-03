@@ -35,7 +35,6 @@ textarea#content {
     font-weight: 500;
     font-size: 14px;
     cursor: pointer;
-    transition: all 0.2s ease;
     text-align: center;
 }
 
@@ -46,8 +45,9 @@ textarea#content {
 }
 
 .btn-primary:hover {
-    background: #5a6fd8;
-    border-color: #5a6fd8;
+    background: #667eea;
+    border-color: #667eea;
+    cursor: default;
 }
 
 .btn-secondary {
@@ -378,9 +378,7 @@ textarea#content {
     font-size: 1rem;
 }
 
-.btn:hover {
-    background: #5a6fd8;
-}
+/* Removed general btn:hover to allow specific button hover effects */
 
 .alert {
     padding: 0.75rem;
@@ -502,7 +500,7 @@ textarea#content {
 }
 
 /* Optimize animations */
-.btn:hover, .modal-content, .response-card {
+.modal-content, .response-card {
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
