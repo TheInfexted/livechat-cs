@@ -413,8 +413,8 @@ function startNewChat() {
                 <h4>Start a New Chat Session</h4>
                 <form id="startChatForm">
                     <div class="form-group">
-                        <label for="name">Your Name</label>
-                        <input type="text" id="name" name="name" required>
+                        <label for="name">What do you need help with?</label>
+                        <input type="text" id="name" name="name" required placeholder="Describe your issue or question...">
                     </div>
                     <div class="form-group">
                         <label for="email">Email (Optional)</label>

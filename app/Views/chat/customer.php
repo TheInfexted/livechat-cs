@@ -13,8 +13,8 @@
             <h4>Start a Conversation</h4>
             <form id="startChatForm">
                 <div class="form-group">
-                    <label for="customerName">Your Name *</label>
-                    <input type="text" id="customerName" name="name" required>
+                    <label for="customerProblem">What do you need help with? *</label>
+                    <input type="text" id="customerProblem" name="name" required placeholder="Describe your issue or question...">
                 </div>
                 <div class="form-group">
                     <label for="customerEmail">Email (Optional)</label>

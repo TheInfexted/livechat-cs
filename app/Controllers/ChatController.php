@@ -20,7 +20,7 @@ class ChatController extends General
         $email = $this->sanitizeInput($this->request->getPost('email'));
         
         if (empty($name)) {
-            return $this->jsonResponse(['error' => 'Name is required'], 400);
+            return $this->jsonResponse(['error' => 'Please describe what you need help with'], 400);
         }
         
         $sessionId = $this->generateSessionId();
