@@ -62,8 +62,8 @@
                 </div>
                 
                 <div class="filter-actions">
-                    <button type="submit" class="btn btn-primary">Filter</button>
-                    <a href="<?= base_url('chat-history') ?>" class="btn btn-secondary">Clear</a>
+                    <button type="submit" class="btn btn-primary filter-button">Filter</button>
+                    <a href="<?= base_url('chat-history') ?>" class="btn btn-secondary filter-button">Clear</a>
                 </div>
             </div>
         </form>

@@ -93,6 +93,15 @@
     align-items: end;
 }
 
+/* Filter buttons with consistent sizing */
+.filter-button {
+    min-width: 80px;
+    height: 40px;
+    padding: 8px 16px;
+    text-align: center;
+    box-sizing: border-box;
+}
+
 /* Table Styles */
 .table-container {
     background: white;
