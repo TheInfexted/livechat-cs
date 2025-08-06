@@ -18,12 +18,21 @@ $routes->post('/chat/assign-agent', 'ChatController::assignAgent');
 $routes->get('/chat/messages/(:segment)', 'ChatController::getMessages/$1');
 $routes->post('/chat/close-session', 'ChatController::closeSession');
 $routes->get('/chat/check-session-status/(:segment)', 'ChatController::checkSessionStatus/$1');
+$routes->post('/chat/end-customer-session', 'ChatController::endCustomerSession');
 $routes->post('/chat/rate-session', 'ChatController::rateSession');
 $routes->post('/chat/canned-response', 'ChatController::sendCannedResponse');
 $routes->get('/chat/customer-history/(:segment)', 'ChatController::getCustomerHistory/$1');
 $routes->get('/chat/quick-actions', 'ChatController::getQuickActions');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
 $routes->post('/admin/close-inactive', 'ChatController::closeInactiveSessions');
+
+// Chat History routes (accessible to authenticated users)
+$routes->group('chat-history', ['filter' => 'authfilter'], function($routes) {
+    $routes->get('/', 'ChatHistoryController::index');
+    $routes->get('view/(:segment)', 'ChatHistoryController::view/$1');
+    $routes->get('export', 'ChatHistoryController::export');
+    $routes->get('get-stats', 'ChatHistoryController::getStats');
+});
 
 // Admin routes
 $routes->group('admin', ['filter' => 'authfilter'], function($routes) {

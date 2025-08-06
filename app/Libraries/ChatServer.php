@@ -292,6 +292,7 @@ class ChatServer implements MessageComponentInterface
         $this->broadcastToAgents(['type' => 'update_sessions']);
     }
     
+    
     protected function sendWaitingSessions($conn)
     {
         $this->ensureDatabaseConnection();

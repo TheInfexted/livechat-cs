@@ -87,7 +87,8 @@ function refreshAdminSessions() {
                     
                     item.innerHTML = `
                         <div class="session-info">
-                            <strong>${escapeHtml(session.customer_name)}</strong>
+                            <strong>${escapeHtml(session.customer_name || 'Anonymous')}</strong>
+                            <small>Topic: ${escapeHtml(session.chat_topic || 'No topic specified')}</small>
                             <small>${session.created_at}</small>
                         </div>
                         <button class="btn btn-accept" onclick="acceptChat('${session.session_id}')">Accept</button>
@@ -112,7 +113,8 @@ function refreshAdminSessions() {
                     
                     item.innerHTML = `
                         <div class="session-info">
-                            <strong>${escapeHtml(session.customer_name)}</strong>
+                            <strong>${escapeHtml(session.customer_name || 'Anonymous')}</strong>
+                            <small>Topic: ${escapeHtml(session.chat_topic || 'No topic specified')}</small>
                             <small>Agent: ${escapeHtml(session.agent_name || 'Unassigned')}</small>
                         </div>
                         <span class="unread-badge" style="display: none;">0</span>
@@ -251,6 +253,11 @@ function openChat(sessionId) {
     
     loadChatHistoryForSession(sessionId);
     
+    // Start periodic refresh for admin to catch system messages
+    if (getUserType() === 'agent') {
+        startMessageRefresh(sessionId);
+    }
+    
     // Re-initialize message form for admin after opening chat
     setTimeout(() => {
         initializeMessageForm();
@@ -302,6 +309,9 @@ function closeCurrentChat() {
             },
             body: `session_id=${currentSessionId}`
         });
+        
+        // Stop message refresh when closing chat
+        stopMessageRefresh();
         
         const chatPanel = document.getElementById('chatPanel');
         if (chatPanel) {
@@ -413,8 +423,12 @@ function startNewChat() {
                 <h4>Start a New Chat Session</h4>
                 <form id="startChatForm">
                     <div class="form-group">
-                        <label for="name">What do you need help with?</label>
-                        <input type="text" id="name" name="name" required placeholder="Describe your issue or question...">
+                        <label for="customerName">Your Name (Optional)</label>
+                        <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
+                    </div>
+                    <div class="form-group">
+                        <label for="chatTopic">What do you need help with?</label>
+                        <input type="text" id="chatTopic" name="chat_topic" required placeholder="Describe your issue or question...">
                     </div>
                     <div class="form-group">
                         <label for="email">Email (Optional)</label>
@@ -496,6 +510,12 @@ function initWebSocket() {
         
         if (userType === 'agent') {
             setInterval(refreshAdminSessions, 10000);
+        } else if (userType === 'customer') {
+            // Show the close button for customers when connected
+            const closeBtn = document.getElementById('customerCloseBtn');
+            if (closeBtn) {
+                closeBtn.style.display = 'inline-block';
+            }
         }
     };
     
@@ -577,8 +597,16 @@ updateConnectingMessage('Connected to Chat');
             const messageUserType = getUserType();
             const messageSession = getSessionId();
             
-            // For admin, check if this message belongs to the currently open chat
-            if (messageUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
+            // Always display system messages that match the current session
+            if (data.message_type === 'system') {
+                if ((messageUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) ||
+                    (messageUserType === 'customer' && messageSession && data.session_id === messageSession)) {
+                    displayMessage(data);
+                    playNotificationSound();
+                }
+            }
+            // Handle regular messages
+            else if (messageUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
                 displayMessage(data);
                 playNotificationSound();
             } else if (messageUserType === 'customer' && messageSession && data.session_id === messageSession) {
@@ -613,6 +641,7 @@ updateConnectingMessage('Connected to Chat');
         case 'update_sessions':
             refreshAdminSessions();
             break;
+            
             
         case 'system_message':
             displaySystemMessage(data.message);
@@ -816,11 +845,9 @@ function displayMessage(data) {
     // Ensure message has proper timestamp
     data = ensureMessageTimestamp(data);
     
-    // Duplicate detection is now handled in handleWebSocketMessage before displayMessage is called
+    // Use the same ID generation logic as refreshMessagesForSession
     const messageContent = data.message ? data.message.toLowerCase().trim() : '';
-    
-    // Create a more robust message ID that includes the actual message content
-    const messageId = `${data.sender_type}_${messageContent}_${data.timestamp}`;
+    const messageId = data.id ? `db_${data.id}` : `${data.sender_type}_${messageContent}_${data.timestamp}`;
     
     if (displayedMessages.has(messageId)) {
         return;
@@ -830,28 +857,37 @@ function displayMessage(data) {
     
     const messageDiv = document.createElement('div');
     
-    if (userType === 'agent') {
-        if (data.sender_type === 'customer') {
-            messageDiv.className = 'message customer';
-        } else {
-            messageDiv.className = 'message agent';
-        }
+    // Handle system messages specially - check for message_type = 'system'
+    if (data.message_type === 'system') {
+        messageDiv.className = 'message system';
+        const p = document.createElement('p');
+        p.textContent = data.message;
+        messageDiv.appendChild(p);
     } else {
-        messageDiv.className = `message ${data.sender_type}`;
+        // Regular message handling
+        if (userType === 'agent') {
+            if (data.sender_type === 'customer') {
+                messageDiv.className = 'message customer';
+            } else {
+                messageDiv.className = 'message agent';
+            }
+        } else {
+            messageDiv.className = `message ${data.sender_type}`;
+        }
+        
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        bubble.textContent = data.message;
+        
+        const time = document.createElement('div');
+        time.className = 'message-time';
+        time.textContent = formatTime(data.timestamp);
+        
+        bubble.appendChild(time);
+        messageDiv.appendChild(bubble);
     }
     
-    const bubble = document.createElement('div');
-    bubble.className = 'message-bubble';
-    bubble.textContent = data.message;
-    
-    const time = document.createElement('div');
-    time.className = 'message-time';
-    time.textContent = formatTime(data.timestamp);
-    
-    bubble.appendChild(time);
-    messageDiv.appendChild(bubble);
     container.appendChild(messageDiv);
-    
     container.scrollTop = container.scrollHeight;
 }
 
@@ -925,6 +961,69 @@ function playNotificationSound() {
     // Optional: Add notification sound
     // const audio = new Audio('/assets/sounds/notification.mp3');
     // audio.play();
+}
+
+// Message refresh for admin to catch system messages in real-time
+let messageRefreshInterval = null;
+
+function startMessageRefresh(sessionId) {
+    // Clear any existing refresh interval
+    if (messageRefreshInterval) {
+        clearInterval(messageRefreshInterval);
+    }
+    
+    // Refresh messages every 1 second for admin to catch system messages
+    if (getUserType() === 'agent') {
+        messageRefreshInterval = setInterval(() => {
+            refreshMessagesForSession(sessionId);
+        }, 1000);
+    }
+}
+
+function stopMessageRefresh() {
+    if (messageRefreshInterval) {
+        clearInterval(messageRefreshInterval);
+        messageRefreshInterval = null;
+    }
+}
+
+async function refreshMessagesForSession(sessionId) {
+    if (!sessionId || sessionId !== currentSessionId) {
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/chat/messages/${sessionId}`);
+        const messages = await response.json();
+        
+        const container = document.getElementById('messagesContainer');
+        if (container) {
+            // Store current scroll position
+            const isScrolledToBottom = container.scrollTop === container.scrollHeight - container.clientHeight;
+            
+            // Create a more robust tracking system using actual message IDs from database
+            let newMessagesAdded = false;
+            
+            messages.forEach(message => {
+                message = ensureMessageTimestamp(message);
+                
+                // Use the actual database message ID if available, otherwise fall back to content-based ID
+                const messageId = message.id ? `db_${message.id}` : `${message.sender_type}_${message.message ? message.message.toLowerCase().trim() : ''}_${message.timestamp}`;
+                
+                if (!displayedMessages.has(messageId)) {
+                    displayMessage(message);
+                    newMessagesAdded = true;
+                }
+            });
+            
+            // Only adjust scroll if new messages were added and user was at bottom
+            if (newMessagesAdded && isScrolledToBottom) {
+                container.scrollTop = container.scrollHeight;
+            }
+        }
+    } catch (error) {
+        // Error handling without console log
+    }
 }
 
 // Canned responses

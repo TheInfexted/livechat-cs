@@ -6,9 +6,23 @@ class ChatController extends General
 {
     public function index()
     {
+        $sessionId = $this->session->get('chat_session_id');
+        $validSession = null;
+        
+        // Check if session is still valid (exists and not closed)
+        if ($sessionId) {
+            $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
+            if ($chatSession && $chatSession['status'] !== 'closed') {
+                $validSession = $sessionId;
+            } else {
+                // Clear invalid session from PHP session
+                $this->session->remove('chat_session_id');
+            }
+        }
+        
         $data = [
             'title' => 'Customer Support Chat',
-            'session_id' => $this->session->get('chat_session_id') ?? null
+            'session_id' => $validSession
         ];
         
         return view('chat/customer', $data);
@@ -16,18 +30,42 @@ class ChatController extends General
     
     public function startSession()
     {
-        $name = $this->sanitizeInput($this->request->getPost('name'));
+        // Handle both new format (customer_name + chat_topic) and legacy format (name for topic)
+        $customerNameInput = $this->sanitizeInput($this->request->getPost('customer_name'));
+        $topicInput = $this->sanitizeInput($this->request->getPost('chat_topic'));
+        $legacyNameInput = $this->sanitizeInput($this->request->getPost('name')); // For backwards compatibility
         $email = $this->sanitizeInput($this->request->getPost('email'));
         
-        if (empty($name)) {
+        // Determine topic (required)
+        $topic = $topicInput ?: $legacyNameInput;
+        if (empty($topic)) {
             return $this->jsonResponse(['error' => 'Please describe what you need help with'], 400);
         }
         
         $sessionId = $this->generateSessionId();
         
+        // Determine customer name
+        $customerName = 'Anonymous';
+        $customerFullName = 'Anonymous';
+        
+        if (!empty($customerNameInput)) {
+            // Use provided name
+            $customerName = $customerNameInput;
+            $customerFullName = $customerNameInput;
+        } elseif (!empty($email)) {
+            // Try to extract name from email (part before @)
+            $emailParts = explode('@', $email);
+            if (!empty($emailParts[0])) {
+                $customerName = ucfirst($emailParts[0]);
+                $customerFullName = ucfirst($emailParts[0]);
+            }
+        }
+        
         $data = [
             'session_id' => $sessionId,
-            'customer_name' => $name,
+            'customer_name' => $customerName,
+            'customer_fullname' => $customerFullName,
+            'chat_topic' => $topic,
             'customer_email' => $email,
             'status' => 'waiting'
         ];
@@ -81,6 +119,75 @@ class ChatController extends General
         }
         
         return $this->jsonResponse(['error' => 'Failed to close session'], 500);
+    }
+    
+    
+    /**
+     * Customer leaves session - does NOT close it, just notifies and clears customer access
+     */
+    public function endCustomerSession()
+    {
+        $sessionId = $this->request->getPost('session_id');
+        
+        // Log the request for debugging
+        log_message('info', 'endCustomerSession called with session_id: ' . ($sessionId ?: 'null'));
+        
+        if (!$sessionId) {
+            log_message('error', 'endCustomerSession: No session ID provided');
+            return $this->jsonResponse(['error' => 'Session ID is required'], 400);
+        }
+        
+        // Get the chat session to verify it exists
+        $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
+        log_message('info', 'endCustomerSession: Chat session lookup result: ' . ($chatSession ? 'found' : 'not found'));
+        
+        if (!$chatSession) {
+            // Check if session ID exists in PHP session vs what was passed
+            $phpSessionId = $this->session->get('chat_session_id');
+            log_message('error', 'endCustomerSession: Session not found in DB. Requested: ' . $sessionId . ', PHP Session: ' . ($phpSessionId ?: 'null'));
+            return $this->jsonResponse(['error' => 'Session not found', 'debug' => ['requested' => $sessionId, 'php_session' => $phpSessionId]], 404);
+        }
+        
+        // Check if session is already closed
+        if ($chatSession['status'] === 'closed') {
+            log_message('info', 'endCustomerSession: Session already closed: ' . $sessionId);
+            // Still clear PHP session and return success
+            $this->session->remove('chat_session_id');
+            return $this->jsonResponse([
+                'success' => true, 
+                'message' => 'Chat session was already closed',
+                'customer_left' => true
+            ]);
+        }
+        
+        // Customer leaves but session stays open for admin
+        // Add a system message that customer left the chat
+        $messageData = [
+            'session_id' => $chatSession['id'],
+            'sender_type' => 'agent',
+            'sender_id' => null,
+            'message' => 'Customer left the chat',
+            'message_type' => 'system'
+        ];
+        
+        $messageInserted = $this->messageModel->insert($messageData);
+        log_message('info', 'endCustomerSession: System message inserted: ' . ($messageInserted ? 'success' : 'failed'));
+        
+        // Send WebSocket notification to agents viewing this session
+        if ($messageInserted) {
+            $this->notifyAgentsOfCustomerLeft($sessionId, $messageInserted);
+        }
+        
+        // Clear the customer's PHP session so they can't access this chat anymore
+        $this->session->remove('chat_session_id');
+        
+        log_message('info', 'Customer left session (session remains open): ' . $sessionId);
+        
+        return $this->jsonResponse([
+            'success' => true, 
+            'message' => 'You have left the chat. The session remains available for the agent.',
+            'customer_left' => true
+        ]);
     }
     
     public function checkSessionStatus($sessionId)
@@ -253,5 +360,21 @@ class ChatController extends General
             'success' => true,
             'closed_sessions' => $closedCount
         ]);
+    }
+    
+    /**
+     * Send WebSocket notification to agents when customer leaves
+     */
+    private function notifyAgentsOfCustomerLeft($sessionId, $messageId)
+    {
+        // For now, we'll rely on the real-time message loading when admin refreshes
+        // or we can implement a server-sent events or polling mechanism
+        // The system message is already saved to database and will show in chat history
+        
+        // Log for debugging
+        log_message('info', 'Customer left notification: Session=' . $sessionId . ', Message=' . $messageId);
+        
+        // Future enhancement: Implement proper WebSocket broadcasting here
+        // For now, the admin will see the message when they reload the chat history
     }
 }

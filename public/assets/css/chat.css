@@ -34,6 +34,29 @@ body {
     align-items: center;
 }
 
+.header-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.btn-close-chat {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.btn-close-chat:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
 .chat-header h3 {
     font-size: 18px;
     font-weight: 600;
@@ -391,8 +414,10 @@ body {
 }
 
 .session-info small {
+    display: block;
     color: #666;
     font-size: 13px;
+    margin-bottom: 2px;
 }
 
 .btn-accept {

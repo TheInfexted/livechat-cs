@@ -2,6 +2,8 @@
 
 namespace App\Controllers;
 
+use Exception;
+
 class General extends BaseController
 {
     /**

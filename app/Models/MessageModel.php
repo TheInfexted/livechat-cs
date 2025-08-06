@@ -8,7 +8,7 @@ class MessageModel extends Model
 {
     protected $table = 'messages';
     protected $primaryKey = 'id';
-    protected $allowedFields = ['session_id', 'sender_type', 'sender_id', 'message', 'is_read'];
+    protected $allowedFields = ['session_id', 'sender_type', 'sender_id', 'message', 'message_type', 'is_read'];
     
     public function getSessionMessages($sessionId)
     {

@@ -42,6 +42,7 @@ class Database extends Config
         'strictOn'     => false,
         'failover'     => [],
         'port'         => 3306,
+        'socket'       => '/Applications/MAMP/tmp/mysql/mysql.sock',
         'numberNative' => false,
         'foundRows'    => false,
         'dateFormat'   => [

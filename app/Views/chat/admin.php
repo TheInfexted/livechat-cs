@@ -20,7 +20,8 @@
                     <?php foreach ($waitingSessions as $session): ?>
                     <div class="session-item" data-session-id="<?= $session['session_id'] ?>">
                         <div class="session-info">
-                            <strong><?= esc($session['customer_name']) ?></strong>
+                            <strong><?= esc($session['customer_name'] ?? 'Anonymous') ?></strong>
+                            <small>Topic: <?= esc($session['chat_topic'] ?? 'No topic specified') ?></small>
                             <small><?= date('H:i', strtotime($session['created_at'])) ?></small>
                         </div>
                         <button class="btn btn-accept" onclick="acceptChat('<?= $session['session_id'] ?>')">Accept</button>
@@ -35,7 +36,8 @@
                     <?php foreach ($activeSessions as $session): ?>
                     <div class="session-item active" data-session-id="<?= $session['session_id'] ?>" onclick="openChat('<?= $session['session_id'] ?>')">
                         <div class="session-info">
-                            <strong><?= esc($session['customer_name']) ?></strong>
+                            <strong><?= esc($session['customer_name'] ?? 'Anonymous') ?></strong>
+                            <small>Topic: <?= esc($session['chat_topic'] ?? 'No topic specified') ?></small>
                             <small>Agent: <?= esc($session['agent_name'] ?? 'Unassigned') ?></small>
                         </div>
                         <span class="unread-badge" style="display: none;">0</span>

@@ -43,6 +43,7 @@
     
     <div class="dashboard-actions">
         <a href="<?= base_url('admin/chat') ?>" class="btn btn-primary">Manage Chats</a>
+        <a href="<?= base_url('chat-history') ?>" class="btn btn-info">Chat History</a>
         <?php if ($user['role'] === 'admin'): ?>
             <a href="<?= base_url('admin/agents') ?>" class="btn btn-secondary">Manage Agents</a>
         <?php endif; ?>
