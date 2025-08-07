@@ -46,6 +46,7 @@
         <a href="<?= base_url('chat-history') ?>" class="btn btn-info">Chat History</a>
         <?php if ($user['role'] === 'admin'): ?>
             <a href="<?= base_url('admin/agents') ?>" class="btn btn-secondary">Manage Agents</a>
+            <a href="<?= base_url('admin/api-keys') ?>" class="btn btn-secondary">API Keys</a>
         <?php endif; ?>
 
         <a href="<?= base_url('admin/canned-responses') ?>" class="btn btn-info">Canned Responses</a>

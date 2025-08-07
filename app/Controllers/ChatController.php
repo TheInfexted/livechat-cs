@@ -22,10 +22,23 @@ class ChatController extends General
         
         // Handle iframe integration parameters
         $isIframe = $this->request->getGet('iframe') === '1';
+        $apiKey = $this->sanitizeInput($this->request->getGet('api_key'));
         $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
         $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
         $externalSystemId = $this->sanitizeInput($this->request->getGet('external_system_id'));
         $userRole = $this->sanitizeInput($this->request->getGet('user_role')) ?: 'anonymous';
+        
+        // Validate API key for iframe integrations
+        if ($isIframe && $apiKey) {
+            $apiKeyModel = new \App\Models\ApiKeyModel();
+            $domain = $this->request->getServer('HTTP_REFERER') ? parse_url($this->request->getServer('HTTP_REFERER'), PHP_URL_HOST) : null;
+            $validation = $apiKeyModel->validateApiKey($apiKey, $domain);
+            
+            if (!$validation['valid']) {
+                // Show error page for invalid API key
+                return view('errors/api_key_invalid', ['error' => $validation['error']]);
+            }
+        }
         
         $data = [
             'title' => 'Customer Support Chat',

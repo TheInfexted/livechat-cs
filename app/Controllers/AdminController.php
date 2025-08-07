@@ -218,6 +218,219 @@ class AdminController extends General
         return $this->jsonResponse(['error' => 'Failed to delete agent'], 500);
     }
     
+    // API Key Management Methods
+    public function apiKeys()
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->to('/login');
+        }
+        
+        // Only admins can access API key management
+        if (!$this->isAdmin()) {
+            return redirect()->to('/admin')->with('error', 'Access denied. Only administrators can manage API keys.');
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        $keys = $apiKeyModel->orderBy('created_at', 'DESC')->findAll();
+        
+        $data = [
+            'title' => 'API Key Management',
+            'user' => $this->getCurrentUser(),
+            'api_keys' => $keys
+        ];
+        
+        return view('admin/api_keys', $data);
+    }
+    
+    public function createApiKey()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        
+        $clientName = $this->request->getPost('client_name');
+        $clientEmail = $this->request->getPost('client_email');
+        $clientDomain = $this->request->getPost('client_domain');
+        
+        if (!$clientName || !$clientEmail) {
+            return $this->jsonResponse(['error' => 'Missing required fields'], 400);
+        }
+        
+        $data = [
+            'key_id' => $apiKeyModel->generateKeyId(),
+            'api_key' => $apiKeyModel->generateApiKey(),
+            'client_name' => $clientName,
+            'client_email' => $clientEmail,
+            'client_domain' => $clientDomain
+        ];
+        
+        $keyId = $apiKeyModel->insert($data);
+        
+        if ($keyId) {
+            $newKey = $apiKeyModel->find($keyId);
+            return $this->jsonResponse([
+                'success' => true, 
+                'message' => 'API key created successfully',
+                'api_key' => $newKey['api_key'],
+                'key_id' => $newKey['key_id']
+            ]);
+        }
+        
+        return $this->jsonResponse(['error' => 'Failed to create API key'], 500);
+    }
+    
+    public function updateApiKey()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        
+        $keyId = $this->request->getPost('key_id');
+        $clientName = $this->request->getPost('client_name');
+        $clientEmail = $this->request->getPost('client_email');
+        $clientDomain = $this->request->getPost('client_domain');
+        $status = $this->request->getPost('status');
+        
+        if (!$keyId || !$clientName || !$clientEmail) {
+            return $this->jsonResponse(['error' => 'Missing required fields'], 400);
+        }
+        
+        $data = [
+            'client_name' => $clientName,
+            'client_email' => $clientEmail,
+            'client_domain' => $clientDomain,
+            'status' => $status
+        ];
+        
+        $updated = $apiKeyModel->update($keyId, $data);
+        
+        if ($updated) {
+            return $this->jsonResponse(['success' => true, 'message' => 'API key updated successfully']);
+        }
+        
+        return $this->jsonResponse(['error' => 'Failed to update API key'], 500);
+    }
+    
+    public function revokeApiKey($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        $revoked = $apiKeyModel->revokeApiKey($keyId);
+        
+        if ($revoked) {
+            return $this->jsonResponse(['success' => true, 'message' => 'API key revoked successfully']);
+        }
+        
+        return $this->jsonResponse(['error' => 'Failed to revoke API key'], 500);
+    }
+    
+    public function apiKeyUsage($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->to('/login');
+        }
+        
+        if (!$this->isAdmin()) {
+            return redirect()->to('/admin')->with('error', 'Access denied');
+        }
+        
+        // Usage tracking has been removed - redirect back to API keys page
+        return redirect()->to('/admin/api-keys')->with('error', 'Usage tracking functionality has been removed');
+    }
+    
+    public function resetApiKeyUsage($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        // Usage tracking has been removed
+        return $this->jsonResponse(['error' => 'Usage tracking functionality has been removed'], 400);
+    }
+    
+    public function editApiKey($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        $apiKey = $apiKeyModel->find($keyId);
+        
+        if (!$apiKey) {
+            return $this->jsonResponse(['error' => 'API key not found'], 404);
+        }
+        
+        return $this->jsonResponse($apiKey);
+    }
+    
+    public function suspendApiKey($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        $updated = $apiKeyModel->update($keyId, ['status' => 'suspended']);
+        
+        if ($updated) {
+            return $this->jsonResponse(['success' => true, 'message' => 'API key suspended successfully']);
+        }
+        
+        return $this->jsonResponse(['error' => 'Failed to suspend API key'], 500);
+    }
+    
+    public function activateApiKey($keyId)
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+        
+        if (!$this->isAdmin()) {
+            return $this->jsonResponse(['error' => 'Access denied'], 403);
+        }
+        
+        $apiKeyModel = new \App\Models\ApiKeyModel();
+        $updated = $apiKeyModel->update($keyId, ['status' => 'active']);
+        
+        if ($updated) {
+            return $this->jsonResponse(['success' => true, 'message' => 'API key activated successfully']);
+        }
+        
+        return $this->jsonResponse(['error' => 'Failed to activate API key'], 500);
+    }
+    
     // Manage automated keyword responses
     public function keywordResponses()
     {

@@ -11,6 +11,9 @@
         // Base URL of your chat system - CHANGE THIS TO YOUR DOMAIN
         baseUrl: window.LiveChatConfig?.baseUrl || 'http://localhost',
         
+        // API Key for validation
+        apiKey: window.LiveChatConfig?.apiKey || '',
+        
         // Widget appearance
         position: window.LiveChatConfig?.position || 'bottom-right', // bottom-right, bottom-left
         theme: window.LiveChatConfig?.theme || 'blue', // blue, green, purple, custom
@@ -335,10 +338,8 @@
                 // Handle messages from chat iframe
                 switch (event.data.type) {
                     case 'chat_started':
-                        console.log('LiveChat: Session started');
                         break;
                     case 'chat_ended':
-                        console.log('LiveChat: Session ended');
                         break;
                     case 'new_message':
                         if (!this.isOpen) {
@@ -352,22 +353,63 @@
         generateChatUrl() {
             let url = `${this.config.baseUrl}/chat`;
             
+            const params = new URLSearchParams({
+                'iframe': '1',
+                'api_key': window.LiveChatConfig?.apiKey || '' // Pass API key
+            });
+            
             if (this.config.user && this.config.user.isLoggedIn) {
-                const params = new URLSearchParams({
-                    'iframe': '1',
-                    'external_username': this.config.user.username || '',
-                    'external_fullname': this.config.user.fullname || '',
-                    'external_system_id': this.config.user.systemId || '',
-                    'user_role': 'loggedUser'
-                });
-                url += '?' + params.toString();
+                params.append('external_username', this.config.user.username || '');
+                params.append('external_fullname', this.config.user.fullname || '');
+                params.append('external_system_id', this.config.user.systemId || '');
+                params.append('user_role', 'loggedUser');
             }
             
+            url += '?' + params.toString();
             return url;
         }
         
-        open() {
+        async validateApiKey() {
+            const apiKey = window.LiveChatConfig?.apiKey || this.config.apiKey;
+            
+            if (!apiKey) {
+                alert('No API key found. Please check your configuration.');
+                return false;
+            }
+            
+            try {
+                const response = await fetch(`${this.config.baseUrl}/api/widget/validate`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        api_key: apiKey,
+                        domain: window.location.hostname
+                    })
+                });
+                
+                const result = await response.json();
+                if (!result.valid) {
+                    alert(`Chat Widget Error: ${result.error}`);
+                    return false;
+                }
+                
+                return true;
+            } catch (error) {
+                alert('Chat Widget Error: Unable to validate API key');
+                return false;
+            }
+        }
+        
+        async open() {
             if (this.isOpen) return;
+            
+            // Validate API key before opening
+            const isValid = await this.validateApiKey();
+            if (!isValid) {
+                return; // Don't open if API key is invalid
+            }
             
             // Update iframe URL
             this.iframe.src = this.generateChatUrl();
@@ -449,15 +491,19 @@
     
     // Auto-initialize when DOM is ready
     function initWidget() {
+        // Ensure we have the latest config from the page
+        const config = window.LiveChatConfig || {};
+        
         // Initialize with global config if available
-        window.LiveChatWidget = new LiveChatWidget(window.LiveChatConfig || {});
+        window.LiveChatWidget = new LiveChatWidget(config);
     }
     
     // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initWidget);
     } else {
-        initWidget();
+        // Small delay to ensure config is set
+        setTimeout(initWidget, 100);
     }
     
 })();

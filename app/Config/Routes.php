@@ -61,6 +61,15 @@ $routes->group('admin', ['filter' => 'authfilter'], function($routes) {
     $routes->get('customers', 'AdminController::customers');
     $routes->get('customers/(:segment)', 'AdminController::customerDetails/$1');
     $routes->get('export/chats', 'AdminController::exportChats');
+    
+    // API Key Management routes
+    $routes->get('api-keys', 'AdminController::apiKeys');
+    $routes->post('api-keys/create', 'AdminController::createApiKey');
+    $routes->post('api-keys/update', 'AdminController::updateApiKey');
+    $routes->get('api-keys/edit/(:num)', 'AdminController::editApiKey/$1');
+    $routes->post('api-keys/suspend/(:num)', 'AdminController::suspendApiKey/$1');
+    $routes->post('api-keys/activate/(:num)', 'AdminController::activateApiKey/$1');
+    $routes->post('api-keys/revoke/(:num)', 'AdminController::revokeApiKey/$1');
 
 });
 
@@ -85,4 +94,9 @@ $routes->get('/logout', 'Auth::logout');
 $routes->group('api', function($routes) {
     $routes->post('chat/send-message', 'ChatController::sendMessage');
     $routes->get('chat/check-status/(:segment)', 'ChatController::checkStatus/$1');
+    
+    // Widget API validation routes (no auth filter - public API)
+    $routes->post('widget/validate', 'WidgetAuthController::validateWidget');
+    $routes->post('widget/validate-session', 'WidgetAuthController::validateChatStart');
+    $routes->post('widget/log-message', 'WidgetAuthController::logMessageSent');
 });

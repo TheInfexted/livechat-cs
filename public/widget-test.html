@@ -92,17 +92,24 @@
         <div class="test-section">
             <h2>Integration Code Used</h2>
             <pre>&lt;script&gt;
-window.LiveChatConfig = {
-    baseUrl: 'http://localhost',
-    theme: 'blue',
-    position: 'bottom-right',
-    user: { isLoggedIn: false },
-    branding: { title: 'Test Chat' },
-    onOpen: function() { console.log('Chat opened'); },
-    onClose: function() { console.log('Chat closed'); }
-};
-&lt;/script&gt;
-&lt;script src="/widget.js"&gt;&lt;/script&gt;</pre>
+        window.LiveChatConfig = {
+            baseUrl: 'http://localhost',
+            apiKey: 'lc_test987654321fedcba', // Valid Test Website API Key
+            theme: 'blue',
+            position: 'bottom-right',
+            user: { isLoggedIn: false },
+            branding: { title: 'Test Chat' },
+            onOpen: function() { 
+                console.log('Chat opened'); 
+                // API usage tracking automatically handled
+            },
+            onClose: function() { console.log('Chat closed'); },
+            onChatStart: function() { console.log('Chat started'); },
+            onMessageSent: function(msg) { console.log('Message:', msg); }
+        };
+        &lt;/script&gt;
+        &lt;script src="assets/js/widget.js"&gt;&lt;/script&gt;
+            </pre>
         </div>
 
         <!-- Console Log -->
@@ -119,6 +126,7 @@ window.LiveChatConfig = {
     <script>
         window.LiveChatConfig = {
             baseUrl: window.location.origin, // Use current domain
+            apiKey: 'lc_test987654321fedcba', // Valid Test API Key
             theme: 'blue',
             position: 'bottom-right',
             user: {
@@ -128,11 +136,9 @@ window.LiveChatConfig = {
                 title: 'Test Chat'
             },
             onOpen: function() {
-                console.log('Widget opened');
                 logToPage('Widget opened');
             },
             onClose: function() {
-                console.log('Widget closed');
                 logToPage('Widget closed');
             }
         };
