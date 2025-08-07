@@ -3,7 +3,7 @@
 <?= $this->section('content') ?>
 <link rel="stylesheet" href="<?= base_url('assets/css/admin.css') ?>">
 <div class="admin-canned-responses">
-    <div class="page-header">
+    <div class="dashboard-header">
         <h2>Manage Canned Responses</h2>
         <div class="header-actions">
             <button class="btn btn-primary" onclick="openAddModal()">Add New Response</button>

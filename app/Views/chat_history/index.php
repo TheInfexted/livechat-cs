@@ -18,17 +18,13 @@
     <?php endif; ?>
 
     <!-- Header -->
-    <div class="page-header">
+    <div class="dashboard-header">
         <div class="header-content">
-            <h2><?= esc($title) ?></h2>
+            <h2 style="color: white;"><?= esc($title) ?></h2>
             <div class="header-actions">
                 <a href="<?= base_url('admin/dashboard') ?>" class="btn btn-secondary">Back to Dashboard</a>
                 <button type="button" id="exportBtn" class="btn btn-success">Export CSV</button>
             </div>
-        </div>
-        <div class="user-info">
-            <span>Welcome, <?= esc($user['username']) ?> (<?= ucfirst($user['role']) ?>)</span>
-            <a href="<?= base_url('logout') ?>" class="btn btn-logout">Logout</a>
         </div>
     </div>
 
@@ -134,9 +130,50 @@
     </div>
 
     <!-- Pagination -->
-    <?php if (isset($pager) && !empty($pager)): ?>
+    <?php if (isset($pagination) && $pagination['hasPages']): ?>
         <div class="pagination-container">
-            <?= $pager ?>
+            <nav aria-label="Page navigation">
+                <ul class="pagination">
+                    <?php if ($pagination['hasPrevious']): ?>
+                        <li class="page-item">
+                            <a href="<?= $pagination['baseUrl'] ?>?page=1<?= !empty($filters['search']) ? '&search=' . urlencode($filters['search']) : '' ?><?= !empty($filters['status']) ? '&status=' . urlencode($filters['status']) : '' ?><?= !empty($filters['date_from']) ? '&date_from=' . urlencode($filters['date_from']) : '' ?><?= !empty($filters['date_to']) ? '&date_to=' . urlencode($filters['date_to']) : '' ?>" aria-label="First" class="page-link">
+                                <span aria-hidden="true">« First</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a href="<?= $pagination['baseUrl'] ?>?page=<?= $pagination['previousPage'] ?><?= !empty($filters['search']) ? '&search=' . urlencode($filters['search']) : '' ?><?= !empty($filters['status']) ? '&status=' . urlencode($filters['status']) : '' ?><?= !empty($filters['date_from']) ? '&date_from=' . urlencode($filters['date_from']) : '' ?><?= !empty($filters['date_to']) ? '&date_to=' . urlencode($filters['date_to']) : '' ?>" aria-label="Previous" class="page-link">
+                                <span aria-hidden="true">‹ Prev</span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
+                    
+                    <?php 
+                    $startPage = max(1, $pagination['currentPage'] - 2);
+                    $endPage = min($pagination['totalPages'], $pagination['currentPage'] + 2);
+                    
+                    for ($i = $startPage; $i <= $endPage; $i++): 
+                    ?>
+                        <li class="page-item <?= $i == $pagination['currentPage'] ? 'active' : '' ?>">
+                            <a href="<?= $pagination['baseUrl'] ?>?page=<?= $i ?><?= !empty($filters['search']) ? '&search=' . urlencode($filters['search']) : '' ?><?= !empty($filters['status']) ? '&status=' . urlencode($filters['status']) : '' ?><?= !empty($filters['date_from']) ? '&date_from=' . urlencode($filters['date_from']) : '' ?><?= !empty($filters['date_to']) ? '&date_to=' . urlencode($filters['date_to']) : '' ?>" class="page-link">
+                                <?= $i ?>
+                            </a>
+                        </li>
+                    <?php endfor; ?>
+                    
+                    <?php if ($pagination['hasNext']): ?>
+                        <li class="page-item">
+                            <a href="<?= $pagination['baseUrl'] ?>?page=<?= $pagination['nextPage'] ?><?= !empty($filters['search']) ? '&search=' . urlencode($filters['search']) : '' ?><?= !empty($filters['status']) ? '&status=' . urlencode($filters['status']) : '' ?><?= !empty($filters['date_from']) ? '&date_from=' . urlencode($filters['date_from']) : '' ?><?= !empty($filters['date_to']) ? '&date_to=' . urlencode($filters['date_to']) : '' ?>" aria-label="Next" class="page-link">
+                                <span aria-hidden="true">Next ›</span>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a href="<?= $pagination['baseUrl'] ?>?page=<?= $pagination['totalPages'] ?><?= !empty($filters['search']) ? '&search=' . urlencode($filters['search']) : '' ?><?= !empty($filters['status']) ? '&status=' . urlencode($filters['status']) : '' ?><?= !empty($filters['date_from']) ? '&date_from=' . urlencode($filters['date_from']) : '' ?><?= !empty($filters['date_to']) ? '&date_to=' . urlencode($filters['date_to']) : '' ?>" aria-label="Last" class="page-link">
+                                <span aria-hidden="true">Last »</span>
+                            </a>
+                        </li>
+                    <?php endif; ?>
+                </ul>
+            </nav>
         </div>
     <?php endif; ?>
 </div>

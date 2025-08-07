@@ -3,7 +3,7 @@
 <?= $this->section('content') ?>
 <link rel="stylesheet" href="<?= base_url('assets/css/admin.css') ?>">
 <div class="admin-agents">
-    <div class="page-header">
+    <div class="dashboard-header">
         <h2>Manage Agents</h2>
         <div class="header-actions">
             <?php if ($user['role'] === 'admin'): ?>

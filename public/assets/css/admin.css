@@ -1,6 +1,6 @@
 /* Admin Dashboard Styles */
 .admin-dashboard {
-    padding: 2rem;
+    padding: 10px;
 }
 
 textarea#content {
@@ -114,11 +114,11 @@ textarea#content {
 
 /* Admin Agents Styles */
 .admin-agents {
-    padding: 2rem;
+    padding: 10px;
 }
 
 .admin-canned-responses {
-    padding: 2rem;
+    padding: 10px;
 }
 
 .page-header {

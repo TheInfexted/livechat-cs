@@ -2,7 +2,7 @@
 .chat-history-container {
     max-width: 100%;
     margin: 0 auto;
-    padding: 20px;
+    padding: 10px;
 }
 
 .chat-view-container {
@@ -300,7 +300,135 @@
 .pagination-container {
     display: flex;
     justify-content: center;
-    margin-top: 20px;
+    margin-top: 30px;
+    margin-bottom: 20px;
+}
+
+/* Custom Pagination Styling */
+.pagination {
+    display: flex;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-radius: 8px;
+    overflow: hidden;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+    background: white;
+}
+
+.pagination .page-item {
+    margin: 0;
+}
+
+.pagination .page-link {
+    display: block;
+    padding: 12px 16px;
+    text-decoration: none;
+    color: #495057;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-right: none;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1;
+    transition: all 0.2s ease;
+    min-width: 48px;
+    text-align: center;
+}
+
+.pagination .page-item:last-child .page-link {
+    border-right: 1px solid #dee2e6;
+    border-top-right-radius: 8px;
+    border-bottom-right-radius: 8px;
+}
+
+.pagination .page-item:first-child .page-link {
+    border-top-left-radius: 8px;
+    border-bottom-left-radius: 8px;
+}
+
+.pagination .page-link:hover {
+    background: #f8f9fa;
+    color: #007bff;
+    border-color: #007bff;
+    transform: translateY(-1px);
+    z-index: 2;
+    position: relative;
+}
+
+.pagination .page-item.active .page-link {
+    background: #007bff;
+    color: white;
+    border-color: #007bff;
+    z-index: 3;
+    position: relative;
+    box-shadow: 0 2px 4px rgba(0, 123, 255, 0.3);
+}
+
+.pagination .page-item.active .page-link:hover {
+    background: #0056b3;
+    border-color: #0056b3;
+    transform: none;
+}
+
+.pagination .page-item.disabled .page-link {
+    color: #6c757d;
+    background: #f8f9fa;
+    border-color: #dee2e6;
+    cursor: not-allowed;
+}
+
+.pagination .page-item.disabled .page-link:hover {
+    color: #6c757d;
+    background: #f8f9fa;
+    border-color: #dee2e6;
+    transform: none;
+}
+
+/* Pagination info */
+.pagination-info {
+    text-align: center;
+    color: #6c757d;
+    font-size: 14px;
+    margin-bottom: 15px;
+}
+
+.pagination-info .current-page {
+    font-weight: 600;
+    color: #495057;
+}
+
+/* Mobile responsive pagination */
+@media (max-width: 768px) {
+    .pagination .page-link {
+        padding: 10px 12px;
+        font-size: 13px;
+        min-width: 40px;
+    }
+    
+    /* Hide first/last links on mobile */
+    .pagination .page-item:first-child,
+    .pagination .page-item:last-child {
+        display: none;
+    }
+    
+    /* Show only if they're prev/next */
+    .pagination .page-item:nth-child(1):has(.page-link[aria-label*="previous"]),
+    .pagination .page-item:nth-last-child(1):has(.page-link[aria-label*="next"]) {
+        display: block;
+    }
+}
+
+@media (max-width: 480px) {
+    .pagination .page-link {
+        padding: 8px 10px;
+        font-size: 12px;
+        min-width: 36px;
+    }
+    
+    .pagination {
+        box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+    }
 }
 
 /* Chat View Specific Styles */
@@ -625,7 +753,7 @@
     .chat-history-container,
     .chat-view-container {
         margin: 0;
-        padding: 20px;
+        padding: 10px;
     }
     
     .message {

@@ -13,7 +13,7 @@ class ChatHistoryController extends General
             return redirect()->to('/login');
         }
         
-        $perPage = 20;
+        $perPage = 10;
         $page = $this->request->getVar('page') ?? 1;
         
         // Build query with filters
@@ -71,15 +71,26 @@ class ChatHistoryController extends General
         $totalRecords = $builder->countAllResults(false);
         $results = $builder->limit($perPage, $offset)->get()->getResultArray();
         
-        // Create pagination links
-        $pager = \Config\Services::pager();
-        $paginateData = $pager->makeLinks($page, $perPage, $totalRecords, 'default_full');
+        // Create pagination data
+        $totalPages = ceil($totalRecords / $perPage);
+        $paginationData = [
+            'currentPage' => $page,
+            'totalPages' => $totalPages,
+            'perPage' => $perPage,
+            'totalRecords' => $totalRecords,
+            'hasPages' => $totalPages > 1,
+            'hasPrevious' => $page > 1,
+            'hasNext' => $page < $totalPages,
+            'previousPage' => max(1, $page - 1),
+            'nextPage' => min($totalPages, $page + 1),
+            'baseUrl' => base_url('chat-history')
+        ];
         
         $data = [
             'title' => 'Chat History',
             'user' => $this->getCurrentUser(),
             'chats' => $results,
-            'pager' => $paginateData,
+            'pagination' => $paginationData,
             'filters' => [
                 'status' => $this->request->getVar('status'),
                 'date_from' => $this->request->getVar('date_from'),
