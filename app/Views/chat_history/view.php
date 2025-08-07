@@ -75,18 +75,45 @@
 
             <div class="detail-card">
                 <h3>Customer Information</h3>
-                <div class="detail-row">
-                    <strong>Username:</strong>
-                    <span><?= esc($chatSession['customer_name']) ?></span>
-                </div>
-                <div class="detail-row">
-                    <strong>Full Name:</strong>
-                    <span><?= $chatSession['customer_fullname'] ? esc($chatSession['customer_fullname']) : 'Anonymous' ?></span>
-                </div>
+                <?php if ($chatSession['user_role'] === 'loggedUser'): ?>
+                    <div class="detail-row">
+                        <strong>User Type:</strong>
+                        <span class="badge badge-success">Logged User</span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Username:</strong>
+                        <span><?= $chatSession['external_username'] ? esc($chatSession['external_username']) : 'Not provided' ?></span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Full Name:</strong>
+                        <span><?= $chatSession['external_fullname'] ? esc($chatSession['external_fullname']) : ($chatSession['customer_fullname'] ? esc($chatSession['customer_fullname']) : 'Anonymous') ?></span>
+                    </div>
+                    <?php if ($chatSession['external_system_id']): ?>
+                    <div class="detail-row">
+                        <strong>System ID:</strong>
+                        <span><?= esc($chatSession['external_system_id']) ?></span>
+                    </div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <div class="detail-row">
+                        <strong>User Type:</strong>
+                        <span class="badge badge-secondary">Anonymous</span>
+                    </div>
+                    <div class="detail-row">
+                        <strong>Name:</strong>
+                        <span><?= $chatSession['customer_name'] ? esc($chatSession['customer_name']) : 'Anonymous' ?></span>
+                    </div>
+                <?php endif; ?>
                 <div class="detail-row">
                     <strong>Email:</strong>
                     <span><?= $chatSession['customer_email'] ? esc($chatSession['customer_email']) : 'Not provided' ?></span>
                 </div>
+                <?php if ($chatSession['chat_topic']): ?>
+                <div class="detail-row">
+                    <strong>Topic:</strong>
+                    <span><?= esc($chatSession['chat_topic']) ?></span>
+                </div>
+                <?php endif; ?>
             </div>
 
             <div class="detail-card">

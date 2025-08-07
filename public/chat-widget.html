@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Chat Widget - Modal Integration</title>
+    <link rel="stylesheet" href="/assets/css/chat-widget.css">
+</head>
+<body>
+    <!-- Demo Content -->
+    <div class="demo-content">
+        <h1>🚀 Live Chat Widget Demo</h1>
+        <p>This is a demo page showing how the chat widget would look on your website.</p>
+        <p>The chat button is positioned in the bottom-right corner. Click it to open the chat interface as a modal!</p>
+        
+        <div class="user-selector">
+            <h3>👤 Test Different User Types:</h3>
+            <div class="user-buttons">
+                <button class="user-button" onclick="setUserType('anonymous')">Anonymous User</button>
+                <button class="user-button" onclick="setUserType('john_doe', 'John Doe')">John Doe</button>
+                <button class="user-button" onclick="setUserType('jane_smith', 'Jane Smith')">Jane Smith</button>
+                <button class="user-button" onclick="setUserType('admin_user', 'Administrator')">Administrator</button>
+            </div>
+            <div class="current-user" id="current-user">
+                Current: <span id="user-display">Click a button above to select a user type</span>
+            </div>
+        </div>
+        
+        <p><strong>Features:</strong></p>
+        <ul>
+            <li>✅ Floating chat button with hover effects</li>
+            <li>✅ Modal popup with smooth animations</li>
+            <li>✅ User role integration (anonymous vs logged users)</li>
+            <li>✅ Mobile responsive design</li>
+            <li>✅ Easy to integrate into any website</li>
+        </ul>
+        
+        <p style="margin-top: 40px; text-align: center; font-size: 1em; opacity: 0.8;">
+            Scroll down or interact with the page to see how the chat widget behaves in a real environment.
+        </p>
+    </div>
+
+    <!-- The chat widget will be automatically embedded here via JavaScript -->
+    
+    <script>
+        // Configuration for the JavaScript widget
+        window.LiveChatConfig = {
+            baseUrl: window.location.origin, // Uses current domain for demo
+            theme: 'blue',
+            position: 'bottom-right',
+            
+            // Start with anonymous user
+            user: {
+                isLoggedIn: false
+            },
+            
+            branding: {
+                title: 'Customer Support'
+            },
+            
+            onOpen: function() {
+                console.log('JavaScript widget chat opened');
+            },
+            
+            onClose: function() {
+                console.log('JavaScript widget chat closed');
+            }
+        };
+
+        // Global variables for demo functionality
+        let currentUserType = 'anonymous';
+        let currentUsername = '';
+        let currentFullname = '';
+
+        function setUserType(userType, fullname = '') {
+            currentUserType = userType;
+            currentFullname = fullname;
+            currentUsername = userType;
+
+            // Update UI
+            document.querySelectorAll('.user-button').forEach(btn => btn.classList.remove('active'));
+            event.target.classList.add('active');
+
+            let displayText = '';
+            if (userType === 'anonymous') {
+                displayText = 'Anonymous User';
+            } else {
+                displayText = fullname + ' (' + userType + ')';
+            }
+
+            document.getElementById('user-display').textContent = displayText;
+
+            // Update the JavaScript widget with new user information
+            if (window.LiveChatWidget) {
+                const userConfig = {
+                    isLoggedIn: userType !== 'anonymous',
+                    username: userType !== 'anonymous' ? currentUsername : '',
+                    fullname: userType !== 'anonymous' ? currentFullname : '',
+                    systemId: userType !== 'anonymous' ? 'DEMO_' + Date.now() : ''
+                };
+                
+                window.LiveChatWidget.updateUser(userConfig);
+                console.log('Updated widget user config:', userConfig);
+            }
+        }
+
+        // Set default user type after page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            // Wait a bit for the widget to load, then set default user
+            setTimeout(() => {
+                setUserType('anonymous');
+            }, 500);
+        });
+
+        // Demo: Simulate some activity after 5 seconds
+        setTimeout(() => {
+            console.log('Demo: Simulating notification...');
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.showNotification();
+            }
+        }, 5000);
+    </script>
+
+    <!-- Load the JavaScript widget -->
+    <script src="assets/js/widget.js"></script>
+</body>
+</html>

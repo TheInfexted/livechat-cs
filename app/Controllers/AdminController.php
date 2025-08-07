@@ -10,11 +10,25 @@ class AdminController extends General
             return redirect()->to('/login');
         }
         
+        // Get sessions with role information
+        $activeSessions = $this->chatModel->select('chat_sessions.*, users.username as agent_name, user_roles.role_description')
+                                         ->join('users', 'users.id = chat_sessions.agent_id', 'left')
+                                         ->join('user_roles', 'user_roles.role_name = chat_sessions.user_role', 'left')
+                                         ->where('chat_sessions.status', 'active')
+                                         ->orderBy('chat_sessions.created_at', 'DESC')
+                                         ->findAll();
+        
+        $waitingSessions = $this->chatModel->select('chat_sessions.*, user_roles.role_description')
+                                          ->join('user_roles', 'user_roles.role_name = chat_sessions.user_role', 'left')
+                                          ->where('chat_sessions.status', 'waiting')
+                                          ->orderBy('chat_sessions.created_at', 'ASC')
+                                          ->findAll();
+        
         $data = [
             'title' => 'Admin Chat Dashboard',
             'user' => $this->getCurrentUser(),
-            'activeSessions' => $this->chatModel->getActiveSessions(),
-            'waitingSessions' => $this->chatModel->getWaitingSessions()
+            'activeSessions' => $activeSessions,
+            'waitingSessions' => $waitingSessions
         ];
         
         return view('chat/admin', $data);

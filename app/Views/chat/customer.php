@@ -15,10 +15,27 @@
         <div class="chat-start-form">
             <h4>Start a Conversation</h4>
                     <form id="startChatForm">
-                        <div class="form-group">
-                            <label for="customerName">Your Name (Optional)</label>
-                            <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
-                        </div>
+                        <!-- Hidden fields for role-based information -->
+                        <input type="hidden" name="user_role" value="<?= $user_role ?? 'anonymous' ?>">
+                        <input type="hidden" name="external_username" value="<?= $external_username ?? '' ?>">
+                        <input type="hidden" name="external_fullname" value="<?= $external_fullname ?? '' ?>">
+                        <input type="hidden" name="external_system_id" value="<?= $external_system_id ?? '' ?>">
+                        
+                        <?php if ($user_role === 'loggedUser' && ($external_fullname || $external_username)): ?>
+                            <!-- For logged users, show the name as read-only -->
+                            <div class="form-group">
+                                <label for="customerName">Your Name</label>
+                                <input type="text" id="customerName" name="customer_name" value="<?= $external_fullname ?: $external_username ?>" readonly style="background-color: #f0f0f0;">
+                                <small style="color: #666;">This information was provided by your system login.</small>
+                            </div>
+                        <?php else: ?>
+                            <!-- For anonymous users, allow name input -->
+                            <div class="form-group">
+                                <label for="customerName">Your Name (Optional)</label>
+                                <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
+                            </div>
+                        <?php endif; ?>
+                        
                         <div class="form-group">
                             <label for="customerProblem">What do you need help with? *</label>
                             <input type="text" id="customerProblem" name="chat_topic" required placeholder="Describe your issue or question...">
@@ -27,6 +44,13 @@
                             <label for="customerEmail">Email (Optional)</label>
                             <input type="email" id="customerEmail" name="email">
                         </div>
+                        
+                        <?php if ($user_role === 'loggedUser'): ?>
+                            <p style="color: #28a745; font-size: 14px; margin-bottom: 15px;">
+                                ✓ You are logged in as a verified user
+                            </p>
+                        <?php endif; ?>
+                        
                         <button type="submit" class="btn btn-primary">Start Chat</button>
                     </form>
         </div>
@@ -66,6 +90,13 @@
     let userType = 'customer';
     let sessionId = '<?= $session_id ?? '' ?>';
     let currentSessionId = null;
+    
+    // Role information for iframe integration
+    let userRole = '<?= $user_role ?? 'anonymous' ?>';
+    let externalUsername = '<?= $external_username ?? '' ?>';
+    let externalFullname = '<?= $external_fullname ?? '' ?>';
+    let externalSystemId = '<?= $external_system_id ?? '' ?>';
+    let isIframe = <?= $is_iframe ? 'true' : 'false' ?>;
     
     // Load quick actions when page loads
     document.addEventListener('DOMContentLoaded', function() {
@@ -200,15 +231,51 @@
     function showStartNewChatInterface() {
         const chatInterface = document.getElementById('chatInterface');
         if (chatInterface) {
+            // Generate form HTML based on user role
+            let nameFieldHtml = '';
+            let roleFieldsHtml = '';
+            let statusMessageHtml = '';
+            
+            if (userRole === 'loggedUser' && (externalFullname || externalUsername)) {
+                // For logged users, show read-only name field
+                const displayName = externalFullname || externalUsername;
+                nameFieldHtml = `
+                    <div class="form-group">
+                        <label for="customerName">Your Name</label>
+                        <input type="text" id="customerName" name="customer_name" value="${displayName}" readonly style="background-color: #f0f0f0;">
+                        <small style="color: #666;">This information was provided by your system login.</small>
+                    </div>
+                `;
+                statusMessageHtml = `
+                    <p style="color: #28a745; font-size: 14px; margin-bottom: 15px;">
+                        ✓ You are logged in as a verified user
+                    </p>
+                `;
+            } else {
+                // For anonymous users, show editable name field
+                nameFieldHtml = `
+                    <div class="form-group">
+                        <label for="customerName">Your Name (Optional)</label>
+                        <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
+                    </div>
+                `;
+            }
+            
+            // Add hidden fields for role information
+            roleFieldsHtml = `
+                <input type="hidden" name="user_role" value="${userRole}">
+                <input type="hidden" name="external_username" value="${externalUsername}">
+                <input type="hidden" name="external_fullname" value="${externalFullname}">
+                <input type="hidden" name="external_system_id" value="${externalSystemId}">
+            `;
+            
             chatInterface.innerHTML = `
                 <div class="chat-start-form">
                     <h4>Start a New Conversation</h4>
                     <p style="color: #666; margin-bottom: 20px;">Your previous chat has ended. You can start a new conversation below:</p>
                     <form id="startChatForm">
-                        <div class="form-group">
-                            <label for="customerName">Your Name (Optional)</label>
-                            <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
-                        </div>
+                        ${roleFieldsHtml}
+                        ${nameFieldHtml}
                         <div class="form-group">
                             <label for="customerProblem">What do you need help with? *</label>
                             <input type="text" id="customerProblem" name="chat_topic" required placeholder="Describe your issue or question...">
@@ -217,6 +284,7 @@
                             <label for="customerEmail">Email (Optional)</label>
                             <input type="email" id="customerEmail" name="email">
                         </div>
+                        ${statusMessageHtml}
                         <button type="submit" class="btn btn-primary">Start New Chat</button>
                     </form>
                 </div>

@@ -20,9 +20,21 @@ class ChatController extends General
             }
         }
         
+        // Handle iframe integration parameters
+        $isIframe = $this->request->getGet('iframe') === '1';
+        $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
+        $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
+        $externalSystemId = $this->sanitizeInput($this->request->getGet('external_system_id'));
+        $userRole = $this->sanitizeInput($this->request->getGet('user_role')) ?: 'anonymous';
+        
         $data = [
             'title' => 'Customer Support Chat',
-            'session_id' => $validSession
+            'session_id' => $validSession,
+            'is_iframe' => $isIframe,
+            'external_username' => $externalUsername,
+            'external_fullname' => $externalFullname,
+            'external_system_id' => $externalSystemId,
+            'user_role' => $userRole
         ];
         
         return view('chat/customer', $data);
@@ -36,6 +48,22 @@ class ChatController extends General
         $legacyNameInput = $this->sanitizeInput($this->request->getPost('name')); // For backwards compatibility
         $email = $this->sanitizeInput($this->request->getPost('email'));
         
+        // Role-based parameters
+        $userRole = $this->sanitizeInput($this->request->getPost('user_role')) ?: 'anonymous';
+        $externalUsername = $this->sanitizeInput($this->request->getPost('external_username'));
+        $externalFullname = $this->sanitizeInput($this->request->getPost('external_fullname'));
+        $externalSystemId = $this->sanitizeInput($this->request->getPost('external_system_id'));
+        
+        // Validate role exists
+        if (!$this->userRoleModel->getRoleByName($userRole)) {
+            return $this->jsonResponse(['error' => 'Invalid user role specified'], 400);
+        }
+        
+        // Check if role can access chat
+        if (!$this->userRoleModel->canAccessChat($userRole)) {
+            return $this->jsonResponse(['error' => 'This role is not allowed to access chat'], 403);
+        }
+        
         // Determine topic (required)
         $topic = $topicInput ?: $legacyNameInput;
         if (empty($topic)) {
@@ -44,20 +72,34 @@ class ChatController extends General
         
         $sessionId = $this->generateSessionId();
         
-        // Determine customer name
+        // Determine customer name based on role
         $customerName = 'Anonymous';
         $customerFullName = 'Anonymous';
         
-        if (!empty($customerNameInput)) {
-            // Use provided name
-            $customerName = $customerNameInput;
-            $customerFullName = $customerNameInput;
-        } elseif (!empty($email)) {
-            // Try to extract name from email (part before @)
-            $emailParts = explode('@', $email);
-            if (!empty($emailParts[0])) {
-                $customerName = ucfirst($emailParts[0]);
-                $customerFullName = ucfirst($emailParts[0]);
+        if ($userRole === 'loggedUser') {
+            // For logged users, prioritize external user info
+            if (!empty($externalFullname)) {
+                $customerName = $externalFullname;
+                $customerFullName = $externalFullname;
+            } elseif (!empty($externalUsername)) {
+                $customerName = $externalUsername;
+                $customerFullName = $externalUsername;
+            } elseif (!empty($customerNameInput)) {
+                $customerName = $customerNameInput;
+                $customerFullName = $customerNameInput;
+            }
+        } else {
+            // For anonymous users, use provided name or extract from email
+            if (!empty($customerNameInput)) {
+                $customerName = $customerNameInput;
+                $customerFullName = $customerNameInput;
+            } elseif (!empty($email)) {
+                // Try to extract name from email (part before @)
+                $emailParts = explode('@', $email);
+                if (!empty($emailParts[0])) {
+                    $customerName = ucfirst($emailParts[0]);
+                    $customerFullName = ucfirst($emailParts[0]);
+                }
             }
         }
         
@@ -67,6 +109,10 @@ class ChatController extends General
             'customer_fullname' => $customerFullName,
             'chat_topic' => $topic,
             'customer_email' => $email,
+            'user_role' => $userRole,
+            'external_username' => $externalUsername,
+            'external_fullname' => $externalFullname,
+            'external_system_id' => $externalSystemId,
             'status' => 'waiting'
         ];
         
@@ -74,10 +120,12 @@ class ChatController extends General
         
         if ($chatId) {
             $this->session->set('chat_session_id', $sessionId);
+            $this->session->set('user_role', $userRole);
             return $this->jsonResponse([
                 'success' => true,
                 'session_id' => $sessionId,
-                'chat_id' => $chatId
+                'chat_id' => $chatId,
+                'user_role' => $userRole
             ]);
         }
         
@@ -129,28 +177,21 @@ class ChatController extends General
     {
         $sessionId = $this->request->getPost('session_id');
         
-        // Log the request for debugging
-        log_message('info', 'endCustomerSession called with session_id: ' . ($sessionId ?: 'null'));
-        
         if (!$sessionId) {
-            log_message('error', 'endCustomerSession: No session ID provided');
             return $this->jsonResponse(['error' => 'Session ID is required'], 400);
         }
         
         // Get the chat session to verify it exists
         $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
-        log_message('info', 'endCustomerSession: Chat session lookup result: ' . ($chatSession ? 'found' : 'not found'));
         
         if (!$chatSession) {
             // Check if session ID exists in PHP session vs what was passed
             $phpSessionId = $this->session->get('chat_session_id');
-            log_message('error', 'endCustomerSession: Session not found in DB. Requested: ' . $sessionId . ', PHP Session: ' . ($phpSessionId ?: 'null'));
             return $this->jsonResponse(['error' => 'Session not found', 'debug' => ['requested' => $sessionId, 'php_session' => $phpSessionId]], 404);
         }
         
         // Check if session is already closed
         if ($chatSession['status'] === 'closed') {
-            log_message('info', 'endCustomerSession: Session already closed: ' . $sessionId);
             // Still clear PHP session and return success
             $this->session->remove('chat_session_id');
             return $this->jsonResponse([
@@ -171,7 +212,6 @@ class ChatController extends General
         ];
         
         $messageInserted = $this->messageModel->insert($messageData);
-        log_message('info', 'endCustomerSession: System message inserted: ' . ($messageInserted ? 'success' : 'failed'));
         
         // Send WebSocket notification to agents viewing this session
         if ($messageInserted) {
@@ -180,8 +220,6 @@ class ChatController extends General
         
         // Clear the customer's PHP session so they can't access this chat anymore
         $this->session->remove('chat_session_id');
-        
-        log_message('info', 'Customer left session (session remains open): ' . $sessionId);
         
         return $this->jsonResponse([
             'success' => true, 
@@ -363,6 +401,32 @@ class ChatController extends General
     }
     
     /**
+     * Get available user roles
+     */
+    public function getRoles()
+    {
+        $roles = $this->userRoleModel->getActiveRoles();
+        return $this->jsonResponse($roles);
+    }
+    
+    /**
+     * Get session with role information
+     */
+    public function getSessionWithRole($sessionId)
+    {
+        $session = $this->chatModel->select('chat_sessions.*, user_roles.role_description, user_roles.can_see_chat_history')
+                                  ->join('user_roles', 'user_roles.role_name = chat_sessions.user_role', 'left')
+                                  ->where('chat_sessions.session_id', $sessionId)
+                                  ->first();
+        
+        if ($session) {
+            return $this->jsonResponse($session);
+        }
+        
+        return $this->jsonResponse(['error' => 'Session not found'], 404);
+    }
+
+    /**
      * Send WebSocket notification to agents when customer leaves
      */
     private function notifyAgentsOfCustomerLeft($sessionId, $messageId)
@@ -370,9 +434,6 @@ class ChatController extends General
         // For now, we'll rely on the real-time message loading when admin refreshes
         // or we can implement a server-sent events or polling mechanism
         // The system message is already saved to database and will show in chat history
-        
-        // Log for debugging
-        log_message('info', 'Customer left notification: Session=' . $sessionId . ', Message=' . $messageId);
         
         // Future enhancement: Implement proper WebSocket broadcasting here
         // For now, the admin will see the message when they reload the chat history

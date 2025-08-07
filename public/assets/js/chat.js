@@ -418,14 +418,56 @@ function startNewChat() {
     
     const chatInterface = document.getElementById('chatInterface');
     if (chatInterface) {
+        // Check if role information is available (from customer view)
+        const currentUserRole = typeof userRole !== 'undefined' ? userRole : 'anonymous';
+        const currentExternalUsername = typeof externalUsername !== 'undefined' ? externalUsername : '';
+        const currentExternalFullname = typeof externalFullname !== 'undefined' ? externalFullname : '';
+        const currentExternalSystemId = typeof externalSystemId !== 'undefined' ? externalSystemId : '';
+        
+        // Generate form HTML based on user role
+        let nameFieldHtml = '';
+        let roleFieldsHtml = '';
+        let statusMessageHtml = '';
+        
+        if (currentUserRole === 'loggedUser' && (currentExternalFullname || currentExternalUsername)) {
+            // For logged users, show read-only name field
+            const displayName = currentExternalFullname || currentExternalUsername;
+            nameFieldHtml = `
+                <div class="form-group">
+                    <label for="customerName">Your Name</label>
+                    <input type="text" id="customerName" name="customer_name" value="${displayName}" readonly style="background-color: #f0f0f0;">
+                    <small style="color: #666;">This information was provided by your system login.</small>
+                </div>
+            `;
+            statusMessageHtml = `
+                <p style="color: #28a745; font-size: 14px; margin-bottom: 15px;">
+                    ✓ You are logged in as a verified user
+                </p>
+            `;
+        } else {
+            // For anonymous users, show editable name field
+            nameFieldHtml = `
+                <div class="form-group">
+                    <label for="customerName">Your Name (Optional)</label>
+                    <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
+                </div>
+            `;
+        }
+        
+        // Add hidden fields for role information
+        roleFieldsHtml = `
+            <input type="hidden" name="user_role" value="${currentUserRole}">
+            <input type="hidden" name="external_username" value="${currentExternalUsername}">
+            <input type="hidden" name="external_fullname" value="${currentExternalFullname}">
+            <input type="hidden" name="external_system_id" value="${currentExternalSystemId}">
+        `;
+        
         chatInterface.innerHTML = `
             <div class="chat-start-form">
                 <h4>Start a New Chat Session</h4>
                 <form id="startChatForm">
-                    <div class="form-group">
-                        <label for="customerName">Your Name (Optional)</label>
-                        <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
-                    </div>
+                    ${roleFieldsHtml}
+                    ${nameFieldHtml}
                     <div class="form-group">
                         <label for="chatTopic">What do you need help with?</label>
                         <input type="text" id="chatTopic" name="chat_topic" required placeholder="Describe your issue or question...">
@@ -434,6 +476,7 @@ function startNewChat() {
                         <label for="email">Email (Optional)</label>
                         <input type="email" id="email" name="email">
                     </div>
+                    ${statusMessageHtml}
                     <button type="submit" class="btn btn-primary">Start Chat</button>
                 </form>
             </div>
@@ -685,6 +728,13 @@ if (document.getElementById('startChatForm')) {
                                 <span></span>
                             </div>
                             
+                            <!-- Quick Action Toolbar -->
+                            <div class="quick-actions-toolbar" id="quickActionsToolbar">
+                                <div class="quick-actions-buttons" id="quickActionsButtons">
+                                    <!-- Quick action buttons will be loaded here -->
+                                </div>
+                            </div>
+                            
                             <div class="chat-input-area">
                                 <form id="messageForm">
                                     <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
@@ -696,6 +746,11 @@ if (document.getElementById('startChatForm')) {
                     
                     initWebSocket();
                     initializeMessageForm();
+                    
+                    // Load quick actions for the customer
+                    setTimeout(() => {
+                        fetchQuickActions();
+                    }, 1000);
                 }
             } else {
                 alert(result.error || 'Failed to start chat');

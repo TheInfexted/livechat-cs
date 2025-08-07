@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Widget Test - Minimal Integration</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+            background: #f0f2f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+        .test-btn {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        .test-btn:hover { background: #0056b3; }
+        .test-btn.green { background: #28a745; }
+        .test-btn.purple { background: #6f42c1; }
+        .test-btn.red { background: #dc3545; }
+        .success { color: #28a745; font-weight: bold; }
+        .error { color: #dc3545; font-weight: bold; }
+        .info { color: #17a2b8; }
+        pre {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🧪 Chat Widget Integration Test</h1>
+        <p>This page tests the JavaScript chat widget with minimal integration code.</p>
+        
+        <!-- Widget Status -->
+        <div class="test-section">
+            <h2>Widget Status</h2>
+            <p id="widget-status">Checking widget status...</p>
+            <button class="test-btn" onclick="checkWidgetStatus()">Refresh Status</button>
+        </div>
+
+        <!-- Manual Controls -->
+        <div class="test-section">
+            <h2>Manual Controls</h2>
+            <button class="test-btn" onclick="openChat()">Open Chat</button>
+            <button class="test-btn" onclick="closeChat()">Close Chat</button>
+            <button class="test-btn" onclick="toggleChat()">Toggle Chat</button>
+            <button class="test-btn red" onclick="showNotification()">Show Notification</button>
+        </div>
+
+        <!-- Theme Testing -->
+        <div class="test-section">
+            <h2>Theme Testing</h2>
+            <button class="test-btn" onclick="changeTheme('blue')">Blue Theme</button>
+            <button class="test-btn green" onclick="changeTheme('green')">Green Theme</button>
+            <button class="test-btn purple" onclick="changeTheme('purple')">Purple Theme</button>
+        </div>
+
+        <!-- User Testing -->
+        <div class="test-section">
+            <h2>User Type Testing</h2>
+            <button class="test-btn" onclick="setAnonymousUser()">Set Anonymous</button>
+            <button class="test-btn" onclick="setLoggedUser()">Set Logged User</button>
+            <p id="current-user-info">Current user: Anonymous</p>
+        </div>
+
+        <!-- Integration Code -->
+        <div class="test-section">
+            <h2>Integration Code Used</h2>
+            <pre>&lt;script&gt;
+window.LiveChatConfig = {
+    baseUrl: 'http://localhost',
+    theme: 'blue',
+    position: 'bottom-right',
+    user: { isLoggedIn: false },
+    branding: { title: 'Test Chat' },
+    onOpen: function() { console.log('Chat opened'); },
+    onClose: function() { console.log('Chat closed'); }
+};
+&lt;/script&gt;
+&lt;script src="/widget.js"&gt;&lt;/script&gt;</pre>
+        </div>
+
+        <!-- Console Log -->
+        <div class="test-section">
+            <h2>Console Output</h2>
+            <p class="info">Open browser console (F12) to see widget events and logs.</p>
+            <div id="console-output" style="background: #f8f9fa; padding: 10px; border-radius: 3px; max-height: 200px; overflow-y: auto;">
+                <div class="info">Console output will appear here...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Widget Configuration -->
+    <script>
+        window.LiveChatConfig = {
+            baseUrl: window.location.origin, // Use current domain
+            theme: 'blue',
+            position: 'bottom-right',
+            user: {
+                isLoggedIn: false
+            },
+            branding: {
+                title: 'Test Chat'
+            },
+            onOpen: function() {
+                console.log('Widget opened');
+                logToPage('Widget opened');
+            },
+            onClose: function() {
+                console.log('Widget closed');
+                logToPage('Widget closed');
+            }
+        };
+
+        // Test functions
+        function checkWidgetStatus() {
+            const statusEl = document.getElementById('widget-status');
+            
+            if (window.LiveChatWidget) {
+                statusEl.innerHTML = '<span class="success">✅ Widget loaded successfully</span>';
+                statusEl.innerHTML += '<br>Widget is ' + (window.LiveChatWidget.isOpen ? 'OPEN' : 'CLOSED');
+                statusEl.innerHTML += '<br>Theme: ' + window.LiveChatWidget.config.theme;
+                statusEl.innerHTML += '<br>Position: ' + window.LiveChatWidget.config.position;
+            } else {
+                statusEl.innerHTML = '<span class="error">❌ Widget not loaded</span>';
+            }
+        }
+
+        function openChat() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.open();
+                logToPage('Manually opened chat');
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function closeChat() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.close();
+                logToPage('Manually closed chat');
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function toggleChat() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.toggle();
+                logToPage('Toggled chat');
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function showNotification() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.showNotification();
+                logToPage('Showed notification');
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function changeTheme(theme) {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.config.theme = theme;
+                const container = window.LiveChatWidget.elements.container;
+                container.className = container.className.replace(/theme-\w+/, 'theme-' + theme);
+                logToPage('Changed theme to: ' + theme);
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function setAnonymousUser() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.updateUser({
+                    isLoggedIn: false
+                });
+                document.getElementById('current-user-info').textContent = 'Current user: Anonymous';
+                logToPage('Set user to anonymous');
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function setLoggedUser() {
+            if (window.LiveChatWidget) {
+                const userInfo = {
+                    isLoggedIn: true,
+                    username: 'test_user',
+                    fullname: 'Test User',
+                    systemId: 'TEST_123'
+                };
+                window.LiveChatWidget.updateUser(userInfo);
+                document.getElementById('current-user-info').textContent = 'Current user: Test User (logged in)';
+                logToPage('Set user to logged in: ' + userInfo.fullname);
+            } else {
+                logToPage('Widget not available');
+            }
+        }
+
+        function logToPage(message) {
+            const output = document.getElementById('console-output');
+            const timestamp = new Date().toLocaleTimeString();
+            output.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        // Check status when page loads
+        document.addEventListener('DOMContentLoaded', function() {
+            setTimeout(() => {
+                checkWidgetStatus();
+                logToPage('Page loaded, widget status checked');
+            }, 1000);
+        });
+
+        // Override console.log to also show in page
+        const originalConsoleLog = console.log;
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            logToPage(args.join(' '));
+        };
+    </script>
+
+    <!-- Load the widget -->
+    <script src="assets/js/widget.js"></script>
+</body>
+</html>
