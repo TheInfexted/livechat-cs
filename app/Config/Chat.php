@@ -27,8 +27,8 @@ class Chat extends BaseConfig
     public array $businessDays = [1, 2, 3, 4, 5]; // Monday to Friday
     public string $timezone = 'Asia/Kuala_Lumpur';
     
-    // WebSocket settings
-    public string $websocketHost = 'localhost';
+    // WebSocket settings  
+    public string $websocketHost = 'livechat.kopisugar.cc';
     public int $websocketPort = 8081;
     public int $heartbeatInterval = 30; // seconds
     public int $reconnectAttempts = 5;

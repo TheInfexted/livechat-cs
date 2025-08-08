@@ -6,9 +6,10 @@ class Auth extends BaseController
 {
     public function login()
     {
-        // If already logged in, redirect to admin dashboard
+        // If already logged in, redirect to backend admin dashboard
         if ($this->session->has('user_id')) {
-            return redirect()->to('/admin');
+            $config = new \Config\App();
+            return redirect()->to($config->backendURL . '/admin');
         }
         
         return view('auth/login');
@@ -44,7 +45,9 @@ class Auth extends BaseController
                 'role' => $user['role']
             ]);
             
-            return redirect()->to('/admin');
+            // Redirect to backend admin dashboard
+            $config = new \Config\App();
+            return redirect()->to($config->backendURL . '/admin');
         } else {
             return redirect()->back()->with('error', 'Invalid credentials');
         }

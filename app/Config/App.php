@@ -16,7 +16,23 @@ class App extends BaseConfig
      *
      * E.g., http://example.com/
      */
-    public string $baseURL = 'http://localhost/';
+    public string $baseURL = 'https://livechat.kopisugar.cc/';
+
+    /**
+     * Backend API URL for admin functions
+     * Used when frontend needs to communicate with backend admin APIs
+     */
+    public string $backendURL = 'https://kiosk-chat.kopisugar.cc';
+    
+    public function __construct()
+    {
+        parent::__construct();
+        
+        // Ensure backendURL is never null
+        if (empty($this->backendURL)) {
+            $this->backendURL = 'https://kiosk-chat.kopisugar.cc';
+        }
+    }
 
     /**
      * Allowed Hostnames in the Site URL other than the hostname in the baseURL.
@@ -157,7 +173,7 @@ class App extends BaseConfig
      * secure, the user will be redirected to a secure version of the page
      * and the HTTP Strict Transport Security (HSTS) header will be set.
      */
-    public bool $forceGlobalSecureRequests = false;
+    public bool $forceGlobalSecureRequests = true;
 
     /**
      * --------------------------------------------------------------------------

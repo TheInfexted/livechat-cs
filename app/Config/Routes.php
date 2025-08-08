@@ -24,54 +24,10 @@ $routes->post('/chat/canned-response', 'ChatController::sendCannedResponse');
 $routes->get('/chat/customer-history/(:segment)', 'ChatController::getCustomerHistory/$1');
 $routes->get('/chat/quick-actions', 'ChatController::getQuickActions');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
-$routes->post('/admin/close-inactive', 'ChatController::closeInactiveSessions');
+// Note: Admin functionality moved to backend (livechat-bo)
+// $routes->post('/admin/close-inactive', 'ChatController::closeInactiveSessions');
 
-// Chat History routes (accessible to authenticated users)
-$routes->group('chat-history', ['filter' => 'authfilter'], function($routes) {
-    $routes->get('/', 'ChatHistoryController::index');
-    $routes->get('view/(:segment)', 'ChatHistoryController::view/$1');
-    $routes->get('export', 'ChatHistoryController::export');
-    $routes->get('get-stats', 'ChatHistoryController::getStats');
-});
-
-// Admin routes
-$routes->group('admin', ['filter' => 'authfilter'], function($routes) {
-    $routes->get('/', 'AdminController::dashboard');
-    $routes->get('dashboard', 'AdminController::dashboard');
-    $routes->get('chat', 'AdminController::chat');
-    $routes->get('agents', 'AdminController::agents');
-    $routes->post('agents/edit', 'AdminController::editAgent');
-    $routes->post('agents/add', 'AdminController::addAgent');
-    $routes->post('agents/delete', 'AdminController::deleteAgent');
-    $routes->get('canned-responses', 'AdminController::cannedResponses');
-    $routes->get('canned-responses/get/(:segment)', 'AdminController::getCannedResponse/$1');
-    $routes->get('canned-responses/get-all', 'AdminController::getAllCannedResponses');
-    $routes->post('canned-responses/save', 'AdminController::saveCannedResponse');
-    $routes->post('canned-responses/delete', 'AdminController::deleteCannedResponse');
-    
-    // Keyword responses routes
-    $routes->get('keyword-responses', 'AdminController::keywordResponses');
-    $routes->get('get-keyword-response/(:segment)', 'AdminController::getKeywordResponse/$1');
-    $routes->post('save-keyword-response', 'AdminController::saveKeywordResponse');
-    $routes->post('delete-keyword-response', 'AdminController::deleteKeywordResponse');
-    
-    $routes->get('sessions-data', 'AdminController::sessionsData');
-    $routes->get('settings', 'AdminController::settings');
-    $routes->post('settings/save', 'AdminController::saveSettings');
-    $routes->get('customers', 'AdminController::customers');
-    $routes->get('customers/(:segment)', 'AdminController::customerDetails/$1');
-    $routes->get('export/chats', 'AdminController::exportChats');
-    
-    // API Key Management routes
-    $routes->get('api-keys', 'AdminController::apiKeys');
-    $routes->post('api-keys/create', 'AdminController::createApiKey');
-    $routes->post('api-keys/update', 'AdminController::updateApiKey');
-    $routes->get('api-keys/edit/(:num)', 'AdminController::editApiKey/$1');
-    $routes->post('api-keys/suspend/(:num)', 'AdminController::suspendApiKey/$1');
-    $routes->post('api-keys/activate/(:num)', 'AdminController::activateApiKey/$1');
-    $routes->post('api-keys/revoke/(:num)', 'AdminController::revokeApiKey/$1');
-
-});
+// Frontend (customer) only routes - admin routes moved to livechat-bo
 
 // Real-time notifications (for WebSocket fallback)
 $routes->group('api/notifications', function($routes) {

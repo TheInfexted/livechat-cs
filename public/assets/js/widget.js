@@ -9,7 +9,7 @@
     // Widget configuration
     const WIDGET_CONFIG = {
         // Base URL of your chat system - CHANGE THIS TO YOUR DOMAIN
-        baseUrl: window.LiveChatConfig?.baseUrl || 'http://localhost',
+        baseUrl: window.LiveChatConfig?.baseUrl || 'https://livechat.kopisugar.cc',
         
         // API Key for validation
         apiKey: window.LiveChatConfig?.apiKey || '',

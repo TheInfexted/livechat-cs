@@ -24,9 +24,9 @@ class ChatServer implements MessageComponentInterface
     {
         try {
             $this->pdo = new \PDO(
-                'mysql:unix_socket=/Applications/MAMP/tmp/mysql/mysql.sock;dbname=cs_livechat;charset=utf8mb4',
-                'root',
-                'root',
+                'mysql:host=localhost;dbname=livechat;charset=utf8mb4',
+                'livechat',
+                '768705b7c4cd2',
                 [
                     \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
                     \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,

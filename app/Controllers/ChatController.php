@@ -300,48 +300,19 @@ class ChatController extends General
 
     
 
-    // Send canned response
+    // Send canned response - Proxy to backend
     public function sendCannedResponse()
     {
         if (!$this->isAuthenticated()) {
             return $this->jsonResponse(['error' => 'Unauthorized'], 401);
         }
 
-        $sessionId = $this->request->getPost('session_id');
-        $responseId = $this->request->getPost('response_id');
-        $agentId = $this->session->get('user_id');
-
-        $cannedResponse = $this->cannedResponseModel->find($responseId);
-        if (!$cannedResponse) {
-            return $this->jsonResponse(['error' => 'Canned response not found'], 404);
-        }
-
-        // Check if agent can use this response
-        if (!$cannedResponse['is_global'] && $cannedResponse['agent_id'] != $agentId) {
-            return $this->jsonResponse(['error' => 'Access denied'], 403);
-        }
-
-        // Send the message
-        $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
-        if (!$chatSession) {
-            return $this->jsonResponse(['error' => 'Chat session not found'], 404);
-        }
-
-        $messageData = [
-            'session_id' => $chatSession['id'],
-            'sender_type' => 'agent',
-            'sender_id' => $agentId,
-            'message' => $cannedResponse['content'],
-            'message_type' => 'text'
-        ];
-
-        $messageId = $this->messageModel->insert($messageData);
-
+        // Frontend no longer handles canned responses directly
+        // This should be handled by the backend admin system
         return $this->jsonResponse([
-            'success' => true,
-            'message_id' => $messageId,
-            'message' => $cannedResponse['content']
-        ]);
+            'error' => 'Canned responses are managed by the admin system (livechat-bo)',
+            'redirect' => 'Please use the admin backend for canned response functionality'
+        ], 501);
     }
 
     // Get agent workload
@@ -361,24 +332,30 @@ class ChatController extends General
     // Get active keyword responses for quick actions
     public function getQuickActions()
     {
-        if (!isset($this->keywordResponseModel)) {
-            $this->keywordResponseModel = new \App\Models\KeywordResponseModel();
+        try {
+            // Get all active keyword responses from database using initialized model
+            $keywordResponses = $this->keywordResponseModel->getActiveResponses();
+            
+            // Transform the data to match the expected format for frontend
+            $quickActions = [];
+            foreach ($keywordResponses as $response) {
+                $quickActions[] = [
+                    'keyword' => $response['keyword'],
+                    'display_name' => $response['keyword'], // Using keyword as display name
+                    'response' => $response['response']
+                ];
+            }
+            
+        } catch (\Exception $e) {
+            // Fallback to empty array if database query fails
+            $quickActions = [];
         }
-        
-        $activeResponses = $this->keywordResponseModel->where('is_active', 1)
-                                                    ->orderBy('keyword', 'ASC')
-                                                    ->findAll();
-        
-        // Format for frontend
-        $quickActions = [];
-        foreach ($activeResponses as $response) {
-            $quickActions[] = [
-                'id' => $response['id'],
-                'keyword' => $response['keyword'],
-                'display_name' => ucfirst($response['keyword'])
-            ];
-        }
-        
+
+        // Set CORS headers if needed for cross-origin requests
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET');
+        header('Access-Control-Allow-Headers: Content-Type');
+
         return $this->jsonResponse($quickActions);
     }
 
@@ -434,6 +411,68 @@ class ChatController extends General
         
         if ($session) {
             return $this->jsonResponse($session);
+        }
+        
+        return $this->jsonResponse(['error' => 'Session not found'], 404);
+    }
+
+    /**
+     * Send message via API
+     */
+    public function sendMessage()
+    {
+        if (!$this->isAuthenticated()) {
+            return $this->jsonResponse(['error' => 'Unauthorized'], 401);
+        }
+
+        $sessionId = $this->request->getPost('session_id');
+        $message = $this->request->getPost('message');
+        $messageType = $this->request->getPost('message_type') ?: 'text';
+        $agentId = $this->session->get('user_id');
+
+        if (!$sessionId || !$message) {
+            return $this->jsonResponse(['error' => 'Session ID and message are required'], 400);
+        }
+
+        // Get chat session
+        $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
+        if (!$chatSession) {
+            return $this->jsonResponse(['error' => 'Chat session not found'], 404);
+        }
+
+        $messageData = [
+            'session_id' => $chatSession['id'],
+            'sender_type' => 'agent',
+            'sender_id' => $agentId,
+            'message' => $message,
+            'message_type' => $messageType
+        ];
+
+        $messageId = $this->messageModel->insert($messageData);
+
+        if ($messageId) {
+            return $this->jsonResponse([
+                'success' => true,
+                'message_id' => $messageId
+            ]);
+        }
+
+        return $this->jsonResponse(['error' => 'Failed to send message'], 500);
+    }
+
+    /**
+     * Check chat status via API
+     */
+    public function checkStatus($sessionId)
+    {
+        $session = $this->chatModel->getSessionBySessionId($sessionId);
+        
+        if ($session) {
+            return $this->jsonResponse([
+                'status' => $session['status'],
+                'session_id' => $sessionId,
+                'agent_id' => $session['agent_id'] ?? null
+            ]);
         }
         
         return $this->jsonResponse(['error' => 'Session not found'], 404);

@@ -27,9 +27,9 @@ class Database extends Config
     public array $default = [
         'DSN'          => '',
         'hostname'     => 'localhost',
-        'username'     => 'root',
-        'password'     => 'root',
-        'database'     => 'cs_livechat',
+        'username'     => 'livechat',
+        'password'     => '768705b7c4cd2',
+        'database'     => 'livechat',
         'DBDriver'     => 'MySQLi',
         'DBPrefix'     => '',
         'pConnect'     => false,
@@ -42,7 +42,7 @@ class Database extends Config
         'strictOn'     => false,
         'failover'     => [],
         'port'         => 3306,
-        'socket'       => '/Applications/MAMP/tmp/mysql/mysql.sock',
+        'socket'       => '',
         'numberNative' => false,
         'foundRows'    => false,
         'dateFormat'   => [

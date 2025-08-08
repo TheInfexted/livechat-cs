@@ -90,6 +90,7 @@
     let userType = 'customer';
     let sessionId = '<?= $session_id ?? '' ?>';
     let currentSessionId = null;
+    let baseUrl = '<?= base_url() ?>';
     
     // Role information for iframe integration
     let userRole = '<?= $user_role ?? 'anonymous' ?>';
@@ -103,13 +104,17 @@
         if (sessionId) {
             fetchQuickActions();
         }
+        
+        // Form submission handler is in chat.js - no need for duplicate here
     });
 
     function fetchQuickActions() {
-        fetch('/chat/quick-actions')
+        fetch(baseUrl + 'chat/quick-actions')
             .then(response => response.json())
             .then(data => {
                 const quickActionsButtons = document.getElementById('quickActionsButtons');
+                if (!quickActionsButtons) return;
+                
                 quickActionsButtons.innerHTML = '';
 
                 data.forEach(action => {
@@ -120,7 +125,14 @@
                     quickActionsButtons.appendChild(btn);
                 });
             })
-            .catch(error => console.error('Error fetching quick actions:', error));
+            .catch(error => {
+                console.error('Error fetching quick actions:', error);
+                // Fallback to hide the toolbar if quick actions fail to load
+                const toolbar = document.getElementById('quickActionsToolbar');
+                if (toolbar) {
+                    toolbar.style.display = 'none';
+                }
+            });
     }
 
     function sendQuickMessage(keyword) {
@@ -290,31 +302,7 @@
                 </div>
             `;
             
-            // Add event listener for the new form
-            document.getElementById('startChatForm').addEventListener('submit', async function(e) {
-                e.preventDefault();
-                
-                const formData = new FormData(this);
-                
-                try {
-                    const response = await fetch('/chat/start-session', {
-                        method: 'POST',
-                        body: formData
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        // Reload the page to start fresh chat
-                        window.location.reload();
-                    } else {
-                        alert(result.error || 'Failed to start chat');
-                    }
-                } catch (error) {
-                    console.error('Error starting chat:', error);
-                    alert('Failed to connect. Please try again.');
-                }
-            });
+            // Form submission will be handled by the global chat.js event listener
         }
     }
 

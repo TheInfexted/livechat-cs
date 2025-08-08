@@ -515,7 +515,7 @@ function initWebSocket() {
         ws.close();
     }
     
-    ws = new WebSocket('ws://localhost:8081');
+    ws = new WebSocket('wss://livechat.kopisugar.cc:8081');
     
     ws.onopen = function() {
         const connectionStatus = safeGetElement('connectionStatus');
@@ -692,12 +692,20 @@ updateConnectingMessage('Connected to Chat');
     }
 }
 
-// Customer chat functions
-if (document.getElementById('startChatForm')) {
-    document.getElementById('startChatForm').addEventListener('submit', async function(e) {
+// Customer chat functions - Use event delegation to handle dynamically created forms
+document.addEventListener('submit', async function(e) {
+    if (e.target && e.target.id === 'startChatForm') {
         e.preventDefault();
         
-        const formData = new FormData(this);
+        const formData = new FormData(e.target);
+        const submitBtn = e.target.querySelector('button[type="submit"]');
+        const originalText = submitBtn ? submitBtn.textContent : 'Start Chat';
+        
+        // Disable submit button to prevent double submission
+        if (submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.textContent = 'Starting Chat...';
+        }
         
         try {
             const response = await fetch('/chat/start-session', {
@@ -749,18 +757,30 @@ if (document.getElementById('startChatForm')) {
                     
                     // Load quick actions for the customer
                     setTimeout(() => {
-                        fetchQuickActions();
+                        if (typeof fetchQuickActions === 'function') {
+                            fetchQuickActions();
+                        }
                     }, 1000);
                 }
             } else {
                 alert(result.error || 'Failed to start chat');
+                // Re-enable submit button on error
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
             }
         } catch (error) {
             console.error('Error starting chat:', error);
             alert('Failed to connect. Please try again.');
+            // Re-enable submit button on error
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.textContent = originalText;
+            }
         }
-    });
-}
+    }
+});
 
 // Initialize message form handler
 function initializeMessageForm() {

@@ -37,17 +37,13 @@ abstract class BaseController extends Controller
      */
     protected $helpers = ['url', 'form'];
 
-    // Models
+    // Models (Frontend - Customer chat only)
     protected $chatModel;
     protected $userModel;
     protected $messageModel;
-
-    protected $cannedResponseModel;
     protected $chatFileModel;
-    protected $chatAnalyticsModel;
-    protected $customerModel;
-    protected $keywordResponseModel;
     protected $userRoleModel;
+    protected $keywordResponseModel;
 
     
     /**
@@ -67,14 +63,13 @@ abstract class BaseController extends Controller
         // Initialize session
         $this->session = \Config\Services::session();
         
-        // Initialize models
+        // Initialize models (Frontend only)
         $this->chatModel = new \App\Models\ChatModel();
         $this->userModel = new \App\Models\UserModel();
         $this->messageModel = new \App\Models\MessageModel();
         $this->chatFileModel = new \App\Models\ChatFileModel();
-        $this->cannedResponseModel = new \App\Models\CannedResponseModel();
-        $this->keywordResponseModel = new \App\Models\KeywordResponseModel();
         $this->userRoleModel = new \App\Models\UserRoleModel();
+        $this->keywordResponseModel = new \App\Models\KeywordResponseModel();
     }
     
     protected function jsonResponse($data, $statusCode = 200)
