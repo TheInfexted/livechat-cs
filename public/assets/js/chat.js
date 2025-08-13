@@ -510,12 +510,22 @@ function startNewChat() {
 }
 
 // Initialize WebSocket connection
+let wsUrls = [
+    'wss://ws.kopisugar.cc:39146',
+    'wss://103.205.208.104:39146'
+];
+let currentUrlIndex = 0;
+
 function initWebSocket() {
     if (ws && ws.readyState !== WebSocket.CLOSED) {
         ws.close();
     }
     
-    ws = new WebSocket('wss://livechat.kopisugar.cc:8081');
+    const wsUrl = wsUrls[currentUrlIndex];
+    console.log(`Attempting WebSocket connection to: ${wsUrl}`);
+    
+    ws = new WebSocket(wsUrl);
+    console.log('WebSocket created, readyState:', ws.readyState);
     
     ws.onopen = function() {
         const connectionStatus = safeGetElement('connectionStatus');
@@ -582,7 +592,28 @@ function initWebSocket() {
     };
     
     ws.onerror = function(error) {
-        // Error handling without console log
+        console.error('WebSocket error:', error);
+        console.error('WebSocket readyState:', ws ? ws.readyState : 'undefined');
+        console.error(`Failed to connect to: ${wsUrls[currentUrlIndex]}`);
+        
+        const connectionStatus = safeGetElement('connectionStatus');
+        if (connectionStatus) {
+            connectionStatus.textContent = 'Connection Error';
+            connectionStatus.classList.remove('online');
+        }
+        
+        // Try next URL if available
+        if (currentUrlIndex < wsUrls.length - 1) {
+            currentUrlIndex++;
+            console.log(`Trying fallback connection: ${wsUrls[currentUrlIndex]}`);
+            setTimeout(() => {
+                initWebSocket();
+            }, 2000); // Wait 2 seconds before trying next URL
+        } else {
+            // Reset to first URL for reconnect attempts
+            currentUrlIndex = 0;
+            displaySystemMessage('Connection error. All connection methods failed. Retrying...');
+        }
     };
 }
 

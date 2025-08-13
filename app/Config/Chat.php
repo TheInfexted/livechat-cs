@@ -7,10 +7,6 @@ use CodeIgniter\Config\BaseConfig;
 
 class Chat extends BaseConfig
 {
-
-    
-
-    
     // Session settings
     public int $sessionTimeout = 1800; // 30 minutes
     public int $inactiveSessionTimeout = 3600; // 1 hour
@@ -28,19 +24,9 @@ class Chat extends BaseConfig
     public string $timezone = 'Asia/Kuala_Lumpur';
     
     // WebSocket settings  
-    public string $websocketHost = 'livechat.kopisugar.cc';
-    public int $websocketPort = 8081;
+    public string $websocketHost = 'ws.kopisugar.cc';
+    public string $websocketHostFallback = '103.205.208.104';
+    public int $websocketPort = 39146;
     public int $heartbeatInterval = 30; // seconds
     public int $reconnectAttempts = 5;
-    
-    // Notification settings
-    public bool $enableEmailNotifications = true;
-    public bool $enableSlackIntegration = false;
-    public bool $enablePushNotifications = false;
-    
-    // Analytics settings
-    public bool $enableAnalytics = true;
-    public bool $trackResponseTimes = true;
-    public bool $trackCustomerSatisfaction = true;
-    public int $analyticsRetentionDays = 365;
 }
