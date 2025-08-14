@@ -126,7 +126,6 @@
                 });
             })
             .catch(error => {
-                console.error('Error fetching quick actions:', error);
                 // Fallback to hide the toolbar if quick actions fail to load
                 const toolbar = document.getElementById('quickActionsToolbar');
                 if (toolbar) {
@@ -149,21 +148,58 @@
     // Function to handle customer leaving the chat (session remains open for admin)
     function closeCustomerChat() {
         if (sessionId && confirm('Are you sure you want to leave this chat? The agent can still see the conversation and may respond.')) {
-            // Disable the close button to prevent multiple clicks
+            // Get references to UI elements
             const closeBtn = document.getElementById('customerCloseBtn');
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.querySelector('.btn-send');
+            
+            // Function to reset UI state in case of error
+            const resetUIState = () => {
+                if (closeBtn) {
+                    closeBtn.disabled = false;
+                    closeBtn.textContent = 'Leave Chat';
+                }
+                if (messageInput) messageInput.disabled = false;
+                if (sendBtn) sendBtn.disabled = false;
+            };
+            
+            // Function to complete successful leave process
+            const completeLeaveProcess = (message) => {
+                // Show message that customer has left
+                displaySystemMessage(message || 'You have left the chat. Thank you for contacting us!');
+                
+                // Clear the session ID so it can't be reused
+                sessionId = null;
+                currentSessionId = null;
+                
+                // Hide the close button
+                if (closeBtn) {
+                    closeBtn.style.display = 'none';
+                }
+                
+                // Show start new chat interface after a delay
+                setTimeout(() => {
+                    showStartNewChatInterface();
+                }, 2000);
+            };
+            
+            // Disable the close button to prevent multiple clicks
             if (closeBtn) {
                 closeBtn.disabled = true;
                 closeBtn.textContent = 'Ending...';
             }
             
             // Disable message input
-            const messageInput = document.getElementById('messageInput');
-            const sendBtn = document.querySelector('.btn-send');
             if (messageInput) messageInput.disabled = true;
             if (sendBtn) sendBtn.disabled = true;
             
+            // Set a timeout as a fallback in case the request hangs
+            const timeoutId = setTimeout(() => {
+                resetUIState();
+                alert('The request timed out. Please try again.');
+            }, 10000); // 10 second timeout
+            
             // End the session completely (the HTTP request will handle the system message)
-            console.log('Ending chat session with ID:', sessionId);
             fetch('/chat/end-customer-session', {
                 method: 'POST',
                 headers: {
@@ -172,52 +208,42 @@
                 body: `session_id=${sessionId}`
             })
             .then(response => {
-                console.log('Response status:', response.status);
+                // Clear the timeout since we got a response
+                clearTimeout(timeoutId);
+                
+                // Handle both success and error status codes
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
                 return response.json();
             })
             .then(result => {
-                console.log('Response result:', result);
-                if (result.success) {
-                    // Show message that customer has left
-                    displaySystemMessage(result.message || 'You have left the chat. Thank you for contacting us!');
-                    
-                    // Clear the session ID so it can't be reused
-                    sessionId = null;
-                    currentSessionId = null;
-                    
-                    // Hide the close button
-                    if (closeBtn) {
-                        closeBtn.style.display = 'none';
-                    }
-                    
-                    // Show start new chat interface after a delay
-                    setTimeout(() => {
-                        showStartNewChatInterface();
-                    }, 2000);
+                
+                if (result && result.success) {
+                    completeLeaveProcess(result.message);
                 } else {
-                    // Re-enable buttons if there was an error
-                    if (closeBtn) {
-                        closeBtn.disabled = false;
-                        closeBtn.textContent = 'End Chat';
-                    }
-                    if (messageInput) messageInput.disabled = false;
-                    if (sendBtn) sendBtn.disabled = false;
-                    
-                    alert(result.error || 'Failed to end chat session. Please try again.');
+                    // Handle server-side errors
+                    resetUIState();
+                    alert(result?.error || 'Failed to end chat session. Please try again.');
                 }
             })
             .catch(error => {
-                console.error('Error ending chat session:', error);
+                // Clear the timeout since we caught an error
+                clearTimeout(timeoutId);
                 
-                // Re-enable buttons on error
-                if (closeBtn) {
-                    closeBtn.disabled = false;
-                    closeBtn.textContent = 'End Chat';
+                // Always reset UI state on any error
+                resetUIState();
+                
+                // Show appropriate error message
+                let errorMessage = 'Failed to end chat session. Please try again.';
+                if (error.message && error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Network error. Please check your connection and try again.';
+                } else if (error.message) {
+                    errorMessage = `Error: ${error.message}`;
                 }
-                if (messageInput) messageInput.disabled = false;
-                if (sendBtn) sendBtn.disabled = false;
                 
-                alert('Failed to end chat session. Please try again.');
+                alert(errorMessage);
             });
         }
     }

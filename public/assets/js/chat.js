@@ -482,37 +482,13 @@ function startNewChat() {
             </div>
         `;
         
-        document.getElementById('startChatForm').addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            const formData = new FormData(this);
-            
-            try {
-                const response = await fetch('/chat/start-session', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    sessionId = result.session_id;
-                    location.reload();
-                } else {
-                    alert(result.error || 'Failed to start chat');
-                }
-            } catch (error) {
-                console.error('Error starting chat:', error);
-                alert('Failed to connect. Please try again.');
-            }
-        });
+        // Form submission will be handled by the global document event listener
     }
 }
 
 // Initialize WebSocket connection
 let wsUrls = [
-    'wss://ws.kopisugar.cc:39146',
-    'wss://103.205.208.104:39146'
+    'wss://ws.kopisugar.cc:39147'
 ];
 let currentUrlIndex = 0;
 
@@ -522,10 +498,8 @@ function initWebSocket() {
     }
     
     const wsUrl = wsUrls[currentUrlIndex];
-    console.log(`Attempting WebSocket connection to: ${wsUrl}`);
     
     ws = new WebSocket(wsUrl);
-    console.log('WebSocket created, readyState:', ws.readyState);
     
     ws.onopen = function() {
         const connectionStatus = safeGetElement('connectionStatus');
@@ -564,10 +538,13 @@ function initWebSocket() {
         if (userType === 'agent') {
             setInterval(refreshAdminSessions, 10000);
         } else if (userType === 'customer') {
-            // Show the close button for customers when connected
-            const closeBtn = document.getElementById('customerCloseBtn');
-            if (closeBtn) {
-                closeBtn.style.display = 'inline-block';
+            // Only show the close button if there's an active session
+            const currentSession = getSessionId();
+            if (currentSession) {
+                const closeBtn = document.getElementById('customerCloseBtn');
+                if (closeBtn) {
+                    closeBtn.style.display = 'inline-block';
+                }
             }
         }
     };
@@ -592,10 +569,6 @@ function initWebSocket() {
     };
     
     ws.onerror = function(error) {
-        console.error('WebSocket error:', error);
-        console.error('WebSocket readyState:', ws ? ws.readyState : 'undefined');
-        console.error(`Failed to connect to: ${wsUrls[currentUrlIndex]}`);
-        
         const connectionStatus = safeGetElement('connectionStatus');
         if (connectionStatus) {
             connectionStatus.textContent = 'Connection Error';
@@ -605,7 +578,6 @@ function initWebSocket() {
         // Try next URL if available
         if (currentUrlIndex < wsUrls.length - 1) {
             currentUrlIndex++;
-            console.log(`Trying fallback connection: ${wsUrls[currentUrlIndex]}`);
             setTimeout(() => {
                 initWebSocket();
             }, 2000); // Wait 2 seconds before trying next URL
@@ -747,7 +719,6 @@ document.addEventListener('submit', async function(e) {
             const result = await response.json();
             
             if (result.success) {
-                console.log('Chat started successfully:', result);
                 sessionId = result.session_id;
                 currentSessionId = result.session_id;
                 
@@ -786,6 +757,12 @@ document.addEventListener('submit', async function(e) {
                     initWebSocket();
                     initializeMessageForm();
                     
+                    // Show the Leave Chat button now that we have an active session
+                    const closeBtn = document.getElementById('customerCloseBtn');
+                    if (closeBtn) {
+                        closeBtn.style.display = 'inline-block';
+                    }
+                    
                     // Load quick actions for the customer
                     setTimeout(() => {
                         if (typeof fetchQuickActions === 'function') {
@@ -802,7 +779,6 @@ document.addEventListener('submit', async function(e) {
                 }
             }
         } catch (error) {
-            console.error('Error starting chat:', error);
             alert('Failed to connect. Please try again.');
             // Re-enable submit button on error
             if (submitBtn) {
@@ -1185,7 +1161,7 @@ async function sendCannedResponse(responseId) {
             }
         }
     } catch (error) {
-        console.error('Error sending canned response:', error);
+        // Error handling without console log
     }
 }
 

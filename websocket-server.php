@@ -9,10 +9,10 @@ use App\Libraries\ChatServer;
 use React\Socket\Server;
 use React\Socket\SecureServer;
 
-// Create a secure server with SSL
-$loop = \React\EventLoop\Factory::create();
+// Use the correct event loop method
+$loop = \React\EventLoop\Loop::get();
 
-// Try to use your existing SSL certificates (aaPanel usually puts them here)
+// SSL options
 $sslOptions = [
     'local_cert' => '/www/server/panel/vhost/cert/livechat.kopisugar.cc/fullchain.pem',
     'local_pk' => '/www/server/panel/vhost/cert/livechat.kopisugar.cc/privkey.pem',
@@ -22,7 +22,7 @@ $sslOptions = [
 ];
 
 try {
-    // Create secure server
+    // Create secure server with proper event loop
     $tcpServer = new Server('0.0.0.0:39147', $loop);
     $secureServer = new SecureServer($tcpServer, $loop, $sslOptions);
     
@@ -37,7 +37,7 @@ try {
     );
     
     echo "Secure WebSocket server started on port 39147 (wss://)\n";
-    $loop->run();
+    $loop->run();  // Use $loop->run() instead of $server->run()
     
 } catch (Exception $e) {
     echo "SSL setup failed, falling back to regular WebSocket on port 39146\n";
