@@ -8,6 +8,56 @@ let lastMessageTime = 0;
 const MESSAGE_RATE_LIMIT = 1000;
 let isInitializing = false;
 
+// Avatar generation functions
+function generateInitials(name, isAgent = false) {
+    if (!name || name.trim() === '') {
+        return 'A';
+    }
+    
+    // Handle Anonymous users
+    if (name.toLowerCase() === 'anonymous') {
+        return 'A';
+    }
+    
+    // Split name into words and get first letter of each
+    const words = name.trim().split(/\s+/);
+    
+    if (words.length === 1) {
+        // Single word - get first letter
+        return words[0].charAt(0).toUpperCase();
+    } else if (words.length >= 2) {
+        // Multiple words - get first letter of first and last word
+        return (words[0].charAt(0) + words[words.length - 1].charAt(0)).toUpperCase();
+    }
+    
+    return name.charAt(0).toUpperCase();
+}
+
+function createAvatar(name, type = 'customer', size = 'normal') {
+    const initials = generateInitials(name, type === 'agent');
+    const sizeClass = size === 'small' ? 'small' : '';
+    const typeClass = name && name.toLowerCase() === 'anonymous' ? 'anonymous' : type;
+    
+    return `<div class="avatar ${typeClass} ${sizeClass}">${initials}</div>`;
+}
+
+// Function to add avatar to messages
+function addAvatarToMessage(messageElement, senderName, senderType) {
+    if (!messageElement.querySelector('.avatar')) {
+        const avatarHTML = createAvatar(senderName, senderType, 'small');
+        
+        if (messageElement.classList.contains('system')) {
+            return; // Don't add avatars to system messages
+        }
+        
+        messageElement.insertAdjacentHTML('afterbegin', avatarHTML);
+        
+        // Wrap the existing content in a message-content div for proper flex layout
+        const existingContent = messageElement.innerHTML.replace(avatarHTML, '');
+        messageElement.innerHTML = avatarHTML + `<div class="message-content">${existingContent}</div>`;
+    }
+}
+
 // Helper function to safely get DOM elements
 function safeGetElement(id) {
     const element = document.getElementById(id);
@@ -174,6 +224,15 @@ async function loadChatHistory() {
         if (container) {
             container.innerHTML = '';
             displayedMessages.clear(); // Clear displayed messages for fresh load
+            
+            // Extract customer name from the first customer message for future use
+            if (!window.currentCustomerName && messages.length > 0) {
+                const firstCustomerMessage = messages.find(msg => msg.sender_type === 'customer');
+                if (firstCustomerMessage && (firstCustomerMessage.customer_name || firstCustomerMessage.customer_fullname)) {
+                    window.currentCustomerName = firstCustomerMessage.customer_name || firstCustomerMessage.customer_fullname;
+                }
+            }
+            
             messages.forEach(message => {
                 // Ensure each message has proper timestamp
                 message = ensureMessageTimestamp(message);
@@ -332,6 +391,15 @@ async function loadChatHistoryForSession(sessionId) {
         if (container) {
             container.innerHTML = '';
             displayedMessages.clear();
+            
+            // Extract agent name from the first agent message for future use (if not already set)
+            if (!window.currentAgentName && messages.length > 0) {
+                const firstAgentMessage = messages.find(msg => msg.sender_type === 'agent');
+                if (firstAgentMessage && (firstAgentMessage.agent_name || firstAgentMessage.sender_name)) {
+                    window.currentAgentName = firstAgentMessage.agent_name || firstAgentMessage.sender_name;
+                }
+            }
+            
             messages.forEach(message => {
                 // Ensure each message has proper timestamp
                 message = ensureMessageTimestamp(message);
@@ -729,6 +797,11 @@ document.addEventListener('submit', async function(e) {
                 sessionId = result.session_id;
                 currentSessionId = result.session_id;
                 
+                // Store customer name for immediate message display
+                const formData = new FormData(e.target);
+                const customerName = formData.get('customer_name') || formData.get('external_fullname') || formData.get('external_username') || 'Anonymous';
+                window.currentCustomerName = customerName;
+                
                 const chatInterface = document.getElementById('chatInterface');
                 if (chatInterface) {
                     chatInterface.innerHTML = `
@@ -961,6 +1034,33 @@ function displayMessage(data) {
             messageDiv.className = `message ${data.sender_type}`;
         }
         
+        // Determine sender name for avatar
+        let senderName = 'Anonymous';
+        if (data.sender_type === 'customer') {
+            // For immediate messages (temp IDs), use stored customer name
+            if (data.id && data.id.toString().startsWith('temp_') && window.currentCustomerName) {
+                senderName = window.currentCustomerName;
+            } else {
+                senderName = data.customer_name || data.customer_fullname || window.currentCustomerName || 'Anonymous';
+            }
+        } else if (data.sender_type === 'agent') {
+            // For immediate messages (temp IDs), use stored agent name
+            if (data.id && data.id.toString().startsWith('temp_') && window.currentAgentName) {
+                senderName = window.currentAgentName;
+            } else {
+                senderName = data.agent_name || data.sender_name || window.currentAgentName || 'Agent';
+            }
+        }
+        
+        // Create avatar element
+        const avatarDiv = document.createElement('div');
+        avatarDiv.className = `avatar ${senderName && senderName.toLowerCase() === 'anonymous' ? 'anonymous' : data.sender_type} small`;
+        avatarDiv.textContent = generateInitials(senderName);
+        
+        // Create message content container
+        const messageContent = document.createElement('div');
+        messageContent.className = 'message-content';
+        
         const bubble = document.createElement('div');
         bubble.className = 'message-bubble';
         bubble.textContent = data.message;
@@ -970,7 +1070,11 @@ function displayMessage(data) {
         time.textContent = formatTime(data.timestamp);
         
         bubble.appendChild(time);
-        messageDiv.appendChild(bubble);
+        messageContent.appendChild(bubble);
+        
+        // Assemble the message
+        messageDiv.appendChild(avatarDiv);
+        messageDiv.appendChild(messageContent);
     }
     
     container.appendChild(messageDiv);
@@ -1227,6 +1331,11 @@ async function sendQuickResponse(type) {
 // Initialize WebSocket on page load
 document.addEventListener('DOMContentLoaded', async function() {
     displayedMessages.clear();
+    
+    // Initialize agent name if available (for admin interface)
+    if (typeof currentUsername !== 'undefined' && currentUsername) {
+        window.currentAgentName = currentUsername;
+    }
     
     const chatInterface = safeGetElement('chatInterface');
     const messagesContainer = safeGetElement('messagesContainer');

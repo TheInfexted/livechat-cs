@@ -138,20 +138,31 @@ body {
 .message {
     margin-bottom: 16px;
     display: flex;
-    align-items: flex-end;
+    align-items: flex-start;
+    gap: 10px;
+    max-width: 85%;
 }
 
 .message.customer {
-    justify-content: flex-end;
+    align-self: flex-end;
+    flex-direction: row-reverse;
+    margin-left: auto;
+    margin-right: 0;
 }
 
 .message.agent {
-    justify-content: flex-start;
+    align-self: flex-start;
+    flex-direction: row;
+    margin-left: 0;
+    margin-right: auto;
 }
 
 .message.system {
-    justify-content: center;
+    align-self: center;
+    margin: 10px auto;
     text-align: center;
+    max-width: 70%;
+    justify-content: center;
 }
 
 .message.system p {
@@ -162,12 +173,20 @@ body {
     font-size: 14px;
 }
 
-.message-bubble {
+/* Message content wrapper */
+.message-content {
+    flex: 0 1 auto;
     max-width: 70%;
+    min-width: fit-content;
+}
+
+.message-bubble {
+    display: inline-block;
     padding: 12px 18px;
     border-radius: 18px;
     position: relative;
     word-wrap: break-word;
+    width: fit-content;
 }
 
 .message.customer .message-bubble {
@@ -872,6 +891,46 @@ body {
 .message-status.read::after {
     content: '✓✓';
     color: #667eea;
+}
+
+/* Avatar Styles */
+.avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 12px;
+    color: white;
+    margin-right: 10px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+/* Customer avatar colors */
+.avatar.customer {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+/* Agent avatar colors */
+.avatar.agent {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+}
+
+/* Anonymous user special styling */
+.avatar.anonymous {
+    background: linear-gradient(135deg, #6c757d 0%, #495057 100%);
+}
+
+/* Small avatar for messages */
+.avatar.small {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+    margin-right: 8px;
 }
 
 

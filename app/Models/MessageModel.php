@@ -18,10 +18,14 @@ class MessageModel extends Model
             return [];
         }
         
-        return $this->select('messages.*, users.username as sender_name')
+        return $this->select('messages.*, 
+                           users.username as agent_name,
+                           chat_sessions.customer_name,
+                           chat_sessions.customer_fullname')
                     ->join('users', 'users.id = messages.sender_id', 'left')
-                    ->where('session_id', $chatSession['id'])
-                    ->orderBy('created_at', 'ASC')
+                    ->join('chat_sessions', 'chat_sessions.id = messages.session_id', 'left')
+                    ->where('messages.session_id', $chatSession['id'])
+                    ->orderBy('messages.created_at', 'ASC')
                     ->findAll();
     }
     
