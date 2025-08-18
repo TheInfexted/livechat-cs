@@ -86,7 +86,7 @@
     </div>
 </div>
 
-<script>
+    <script>
     let userType = 'customer';
     let sessionId = '<?= $session_id ?? '' ?>';
     let currentSessionId = null;
@@ -145,9 +145,9 @@
         }
     }
     
-    // Function to handle customer leaving the chat (session remains open for admin)
+    // Function to handle customer leaving the chat (session closes for both customer and admin)
     function closeCustomerChat() {
-        if (sessionId && confirm('Are you sure you want to leave this chat? The agent can still see the conversation and may respond.')) {
+        if (sessionId && confirm('Are you sure you want to leave this chat? This will close the chat session for both you and the agent.')) {
             // Get references to UI elements
             const closeBtn = document.getElementById('customerCloseBtn');
             const messageInput = document.getElementById('messageInput');
@@ -199,6 +199,11 @@
                 alert('The request timed out. Please try again.');
             }, 10000); // 10 second timeout
             
+            // Additional timeout to force UI reset if everything else fails
+            const forceResetTimeoutId = setTimeout(() => {
+                resetUIState();
+            }, 12000); // 12 second force reset
+            
             // End the session completely (the HTTP request will handle the system message)
             fetch('/chat/end-customer-session', {
                 method: 'POST',
@@ -210,6 +215,7 @@
             .then(response => {
                 // Clear the timeout since we got a response
                 clearTimeout(timeoutId);
+                clearTimeout(forceResetTimeoutId);
                 
                 // Handle both success and error status codes
                 if (!response.ok) {
@@ -231,6 +237,7 @@
             .catch(error => {
                 // Clear the timeout since we caught an error
                 clearTimeout(timeoutId);
+                clearTimeout(forceResetTimeoutId);
                 
                 // Always reset UI state on any error
                 resetUIState();

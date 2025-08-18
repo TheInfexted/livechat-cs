@@ -184,7 +184,7 @@ class ChatController extends General
     
     
     /**
-     * Customer leaves session - does NOT close it, just notifies and clears customer access
+     * Customer leaves session - CLOSES the session completely for both customer and admin
      */
     public function endCustomerSession()
     {
@@ -214,21 +214,25 @@ class ChatController extends General
             ]);
         }
         
-        // Customer leaves but session stays open for admin
-        // Add a system message that customer left the chat
-        $messageData = [
-            'session_id' => $chatSession['id'],
-            'sender_type' => 'agent',
-            'sender_id' => null,
-            'message' => 'Customer left the chat',
-            'message_type' => 'system'
-        ];
+        // Close the session completely when customer leaves
+        $sessionClosed = $this->chatModel->closeSession($sessionId);
         
-        $messageInserted = $this->messageModel->insert($messageData);
-        
-        // Send WebSocket notification to agents viewing this session
-        if ($messageInserted) {
-            $this->notifyAgentsOfCustomerLeft($sessionId, $messageInserted);
+        if ($sessionClosed) {
+            // Add a system message that customer left and session is closed
+            $messageData = [
+                'session_id' => $chatSession['id'],
+                'sender_type' => 'agent',
+                'sender_id' => null,
+                'message' => 'Customer left the chat - Session closed',
+                'message_type' => 'system'
+            ];
+            
+            $messageInserted = $this->messageModel->insert($messageData);
+            
+            // Send WebSocket notification to close the session for all participants
+            if ($messageInserted) {
+                $this->notifySessionClosed($sessionId);
+            }
         }
         
         // Clear the customer's PHP session so they can't access this chat anymore
@@ -236,8 +240,9 @@ class ChatController extends General
         
         return $this->jsonResponse([
             'success' => true, 
-            'message' => 'You have left the chat. The session remains available for the agent.',
-            'customer_left' => true
+            'message' => 'You have left the chat. The session has been closed.',
+            'customer_left' => true,
+            'session_closed' => true
         ]);
     }
     
@@ -489,5 +494,18 @@ class ChatController extends General
         
         // Future enhancement: Implement proper WebSocket broadcasting here
         // For now, the admin will see the message when they reload the chat history
+    }
+    
+    /**
+     * Send WebSocket notification to close session for all participants
+     */
+    private function notifySessionClosed($sessionId)
+    {
+        // This method can be extended to send WebSocket notifications
+        // Currently, the session close will be detected when admin checks session status
+        // or when the database is queried for session updates
+        
+        // Future enhancement: Send WebSocket message to close session for all connected clients
+        // For now, admins will see the session as closed when they refresh or check status
     }
 }

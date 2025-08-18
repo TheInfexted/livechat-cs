@@ -538,7 +538,8 @@ function initWebSocket() {
         if (userType === 'agent') {
             setInterval(refreshAdminSessions, 10000);
         } else if (userType === 'customer') {
-            // Only show the close button if there's an active session
+            // Show Leave Chat button only when WebSocket connects successfully and there's an active session
+            // This ensures the user is actually connected to the chat before showing the leave option
             const currentSession = getSessionId();
             if (currentSession) {
                 const closeBtn = document.getElementById('customerCloseBtn');
@@ -598,8 +599,14 @@ function handleWebSocketMessage(data) {
             if (connectedSession) {
                 if (connectedUserType === 'customer') {
                     // Update the initial "Connecting to support..." message
-updateConnectingMessage('Connected to Chat');
+                    updateConnectingMessage('Connected to Chat');
                     loadChatHistory();
+                    
+                    // Show Leave Chat button now that we're successfully connected to the chat
+                    const closeBtn = document.getElementById('customerCloseBtn');
+                    if (closeBtn) {
+                        closeBtn.style.display = 'inline-block';
+                    }
                 } else if (connectedUserType === 'agent' && currentSessionId) {
                     loadChatHistoryForSession(currentSessionId);
                 }
@@ -757,11 +764,8 @@ document.addEventListener('submit', async function(e) {
                     initWebSocket();
                     initializeMessageForm();
                     
-                    // Show the Leave Chat button now that we have an active session
-                    const closeBtn = document.getElementById('customerCloseBtn');
-                    if (closeBtn) {
-                        closeBtn.style.display = 'inline-block';
-                    }
+                    // Note: Leave Chat button will be shown when WebSocket connects successfully
+                    // This ensures the user is actually connected before showing the leave option
                     
                     // Load quick actions for the customer
                     setTimeout(() => {
