@@ -1,6 +1,10 @@
-// Enhanced widget.js with welcome message bubble (no quick actions)
 (function() {
     'use strict';
+    
+    // Prevent multiple widget instances
+    if (window.LiveChatWidget) {
+        return;
+    }
     
     // Default configuration
     const DEFAULT_CONFIG = {
@@ -18,7 +22,7 @@
             delay: 3000, // Show after 3 seconds
             autoHide: true,
             autoHideDelay: 10000, // Hide after 10 seconds
-            avatar: '👋' 
+            avatar: '👋' // Can be emoji, image URL, or false
         },
         user: {
             isLoggedIn: false
@@ -26,7 +30,7 @@
         callbacks: {}
     };
     
-    // CSS
+    // Enhanced CSS with welcome bubble styles
     const WIDGET_CSS = `
         /* Base Widget Styles */
         .live-chat-widget {
@@ -95,6 +99,10 @@
         
         .live-chat-button.open .close-icon {
             display: block;
+        }
+        
+        .live-chat-button.open {
+            background: linear-gradient(135deg, #dc3545, #c82333) !important;
         }
         
         /* Welcome Bubble */
@@ -246,6 +254,11 @@
             overflow: hidden;
         }
         
+        .live-chat-widget.position-bottom-left .live-chat-modal {
+            right: auto;
+            left: 20px;
+        }
+        
         .live-chat-modal.open {
             transform: translateY(0) scale(1);
             opacity: 1;
@@ -259,6 +272,14 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+        }
+        
+        .live-chat-widget.theme-green .live-chat-modal-header {
+            background: linear-gradient(135deg, #28a745, #1e7e34);
+        }
+        
+        .live-chat-widget.theme-purple .live-chat-modal-header {
+            background: linear-gradient(135deg, #6f42c1, #5a32a3);
         }
         
         .live-chat-modal-header h3 {
@@ -316,6 +337,30 @@
         .live-chat-button.has-notification {
             animation: bounce 1s ease-in-out;
         }
+        
+        /* Notification badge */
+        .live-chat-notification {
+            position: absolute;
+            top: -5px;
+            right: -5px;
+            background: #dc3545;
+            color: white;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            animation: live-chat-pulse 2s infinite;
+        }
+        
+        @keyframes live-chat-pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
     `;
     
     class LiveChatWidget {
@@ -362,6 +407,7 @@
             this.elements.button.innerHTML = `
                 <span class="icon chat-icon">💬</span>
                 <span class="icon close-icon">✕</span>
+                <div class="live-chat-notification" id="live-chat-notification"></div>
             `;
             this.elements.button.onclick = () => this.toggle();
             
@@ -420,11 +466,36 @@
             this.elements.button.classList.remove('has-notification');
         }
         
+        showWelcomeBubbleAgain() {
+            this.welcomeBubbleShown = false;
+            this.showWelcomeBubble();
+        }
+        
         bindEvents() {
             // Close on escape key
             document.addEventListener('keydown', (e) => {
                 if (e.key === 'Escape' && this.isOpen) {
                     this.close();
+                }
+            });
+            
+            // Listen for iframe messages
+            window.addEventListener('message', (event) => {
+                if (event.origin !== new URL(this.config.baseUrl).origin) {
+                    return;
+                }
+                
+                // Handle messages from chat iframe
+                switch (event.data.type) {
+                    case 'chat_started':
+                        break;
+                    case 'chat_ended':
+                        break;
+                    case 'new_message':
+                        if (!this.isOpen) {
+                            this.showNotification();
+                        }
+                        break;
                 }
             });
         }
@@ -555,6 +626,20 @@
             }
         }
         
+        showNotification() {
+            const notification = document.getElementById('live-chat-notification');
+            if (notification) {
+                notification.style.display = 'flex';
+            }
+        }
+        
+        hideNotification() {
+            const notification = document.getElementById('live-chat-notification');
+            if (notification) {
+                notification.style.display = 'none';
+            }
+        }
+        
         updateUser(userInfo) {
             this.config.user = userInfo;
             if (this.isOpen && this.iframe) {
@@ -562,21 +647,37 @@
             }
         }
         
-        showWelcomeBubbleAgain() {
-            this.welcomeBubbleShown = false;
-            this.showWelcomeBubble();
+        destroy() {
+            if (this.elements.container) {
+                this.elements.container.remove();
+            }
+            if (this.elements.overlay) {
+                this.elements.overlay.remove();
+            }
+            
+            const styles = document.getElementById('live-chat-widget-styles');
+            if (styles) {
+                styles.remove();
+            }
+            
+            delete window.LiveChatWidget;
         }
     }
     
     // Auto-initialize when DOM is ready
     function initWidget() {
+        // Get config from window
         const config = window.LiveChatConfig || {};
+        
+        // Initialize with global config if available
         window.LiveChatWidget = new LiveChatWidget(config);
     }
     
+    // Initialize when DOM is ready
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', initWidget);
     } else {
+        // Small delay to ensure config is set
         setTimeout(initWidget, 100);
     }
     
