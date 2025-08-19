@@ -110,11 +110,12 @@
             position: absolute;
             bottom: 80px;
             right: 0;
-            max-width: 280px;
+            max-width: 320px;
+            min-width: 280px;
             background: white;
-            border-radius: 16px;
+            border-radius: 12px;
             box-shadow: 0 8px 30px rgba(0, 0, 0, 0.15);
-            padding: 16px 20px;
+            padding: 14px 18px;
             opacity: 0;
             visibility: hidden;
             transform: translateY(20px) scale(0.8);
@@ -240,7 +241,6 @@
         .live-chat-modal {
             position: fixed;
             bottom: 90px;
-            right: 20px;
             width: 400px;
             height: 600px;
             background: white;
@@ -254,8 +254,11 @@
             overflow: hidden;
         }
         
+        .live-chat-widget.position-bottom-right .live-chat-modal {
+            right: 20px;
+        }
+        
         .live-chat-widget.position-bottom-left .live-chat-modal {
-            right: auto;
             left: 20px;
         }
         
@@ -315,9 +318,17 @@
             .live-chat-modal {
                 width: calc(100vw - 40px);
                 height: calc(100vh - 140px);
-                right: 20px;
-                left: 20px;
                 bottom: 90px;
+            }
+            
+            .live-chat-widget.position-bottom-right .live-chat-modal {
+                right: 20px;
+                left: auto;
+            }
+            
+            .live-chat-widget.position-bottom-left .live-chat-modal {
+                left: 20px;
+                right: auto;
             }
         }
         
@@ -365,11 +376,34 @@
     
     class LiveChatWidget {
         constructor(config = {}) {
-            this.config = { ...DEFAULT_CONFIG, ...config };
+            // Deep merge config with defaults, especially for nested objects
+            this.config = this.mergeDeep(DEFAULT_CONFIG, config);
             this.isOpen = false;
             this.elements = {};
             this.welcomeBubbleShown = false;
+            
             this.init();
+        }
+        
+        mergeDeep(target, source) {
+            const output = { ...target };
+            if (this.isObject(target) && this.isObject(source)) {
+                Object.keys(source).forEach(key => {
+                    if (this.isObject(source[key])) {
+                        if (!(key in target))
+                            Object.assign(output, { [key]: source[key] });
+                        else
+                            output[key] = this.mergeDeep(target[key], source[key]);
+                    } else {
+                        Object.assign(output, { [key]: source[key] });
+                    }
+                });
+            }
+            return output;
+        }
+        
+        isObject(item) {
+            return (item && typeof item === 'object' && !Array.isArray(item));
         }
         
         init() {
@@ -447,7 +481,13 @@
         }
         
         showWelcomeBubble() {
-            if (this.welcomeBubbleShown || this.isOpen) return;
+            if (this.welcomeBubbleShown || this.isOpen) {
+                return;
+            }
+            
+            if (!this.elements.welcomeBubble) {
+                return;
+            }
             
             this.elements.welcomeBubble.classList.add('show');
             this.elements.button.classList.add('has-notification');
@@ -669,16 +709,29 @@
         // Get config from window
         const config = window.LiveChatConfig || {};
         
+        // Validate required config
+        if (!config.baseUrl || !config.apiKey) {
+            console.error('LiveChat: Missing required config - baseUrl or apiKey');
+            return;
+        }
+        
         // Initialize with global config if available
         window.LiveChatWidget = new LiveChatWidget(config);
     }
     
-    // Initialize when DOM is ready
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initWidget);
-    } else {
-        // Small delay to ensure config is set
-        setTimeout(initWidget, 100);
+    // Wait for both DOM and config to be ready
+    function waitForInit() {
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => {
+                // Add small delay to ensure config is fully set
+                setTimeout(initWidget, 150);
+            });
+        } else {
+            // DOM is already ready, just wait a bit for config
+            setTimeout(initWidget, 150);
+        }
     }
+    
+    waitForInit();
     
 })();
