@@ -66,3 +66,26 @@ Additionally, make sure that the following extensions are enabled in your PHP:
 - json (enabled by default - don't turn it off)
 - [mysqlnd](http://php.net/manual/en/mysqlnd.install.php) if you plan to use MySQL
 - [libcurl](http://php.net/manual/en/curl.requirements.php) if you plan to use the HTTP\CURLRequest library
+
+For LiveChat integration, use this template:
+<!--
+<script>
+window.LiveChatConfig = {
+    baseUrl: 'https://livechat.kopisugar.cc/',
+    apiKey: 'API_KEY',
+    welcomeBubble: {
+        enabled: true,
+        message: 'Hi! I\'m here to help. How can I assist you?',
+        avatar: '🤖',
+        delay: 3000,
+        autoHide: true,
+        autoHideDelay: 10000
+    }
+};
+
+// Load the widget script dynamically
+var script = document.createElement('script');
+script.src = 'https://livechat.kopisugar.cc//assets/js/widget.js';
+document.head.appendChild(script);
+</script>
+!-->

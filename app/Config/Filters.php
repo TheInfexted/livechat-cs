@@ -35,6 +35,7 @@ class Filters extends BaseFilters
         'pagecache'     => PageCache::class,
         'performance'   => PerformanceMetrics::class,
         'authfilter'    => \App\Filters\AuthFilter::class,
+        'cors' => \App\Filters\CorsFilter::class,
     ];
 
     /**
@@ -54,6 +55,7 @@ class Filters extends BaseFilters
         'before' => [
             'forcehttps', // Force Global Secure Requests
             'pagecache',  // Web Page Caching
+            'cors'
         ],
         'after' => [
             'pagecache',   // Web Page Caching

@@ -11,12 +11,28 @@ class WidgetAuthController extends BaseController
     public function __construct()
     {
         $this->apiKeyModel = new ApiKeyModel();
+        
+        // Add CORS headers for all widget API requests
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+        
+        // Handle preflight request
+        if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+            http_response_code(200);
+            exit();
+        }
     }
     
     public function validateWidget()
     {
+        // Set CORS headers again (in case constructor headers don't work)
+        $this->response->setHeader('Access-Control-Allow-Origin', '*');
+        $this->response->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        $this->response->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+        
         // Handle JSON request body
-        $input = $this->request->getJSON(true); // Get as associative array
+        $input = $this->request->getJSON(true);
         
         // Handle both POST and GET requests for flexibility
         $apiKey = $input['api_key'] ?? $this->request->getPost('api_key') ?? $this->request->getGet('api_key');
@@ -51,6 +67,10 @@ class WidgetAuthController extends BaseController
     
     public function validateChatStart()
     {
+        // Set CORS headers
+        $this->response->setHeader('Access-Control-Allow-Origin', '*');
+        $this->response->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+        
         $apiKey = $this->request->getPost('api_key');
         $sessionId = $this->request->getPost('session_id');
         
@@ -72,14 +92,15 @@ class WidgetAuthController extends BaseController
         if (!$validation['valid']) {
             return $this->response->setJSON($validation)->setStatusCode(403);
         }
-        
-        $keyData = $validation['key_data'];
         
         return $this->response->setJSON(['valid' => true]);
     }
     
     public function logMessageSent()
     {
+        // Set CORS headers
+        $this->response->setHeader('Access-Control-Allow-Origin', '*');
+        
         $apiKey = $this->request->getPost('api_key');
         $sessionId = $this->request->getPost('session_id');
         
@@ -101,8 +122,6 @@ class WidgetAuthController extends BaseController
         if (!$validation['valid']) {
             return $this->response->setJSON($validation)->setStatusCode(403);
         }
-        
-        $keyData = $validation['key_data'];
         
         return $this->response->setJSON(['valid' => true]);
     }
