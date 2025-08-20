@@ -233,9 +233,28 @@ async function loadChatHistory() {
                 }
             }
             
+            // Process messages and add date separators
+            let previousDate = null;
+            
             messages.forEach(message => {
                 // Ensure each message has proper timestamp
                 message = ensureMessageTimestamp(message);
+                
+                // Skip if this is already a date separator from server
+                if (message.type === 'date_separator') {
+                    displayDateSeparator(message.date, message.id);
+                    return;
+                }
+
+                const messageDate = new Date(message.created_at || message.timestamp).toDateString();
+                
+                // Add date separator if date changed
+                if (previousDate !== messageDate) {
+                    displayDateSeparator(formatChatDate(message.created_at || message.timestamp));
+                    previousDate = messageDate;
+                }
+
+                // Display the message
                 displayMessage(message);
             });
         }
@@ -415,8 +434,30 @@ function displaySystemMessage(message) {
     const container = document.getElementById('messagesContainer');
     if (!container) return;
     
+    // Check if we need to add a date separator before this system message
+    const existingMessages = container.querySelectorAll('.message:not(.date-separator)');
+    const currentDate = new Date();
+    const currentDateString = currentDate.toDateString();
+    
+    if (existingMessages.length === 0) {
+        // First message, add date separator
+        displayDateSeparator(formatChatDate(currentDate.toISOString()));
+    } else {
+        // Check if we need a date separator compared to the last message
+        const lastMessage = existingMessages[existingMessages.length - 1];
+        const lastMessageDate = lastMessage.dataset.messageDate;
+        
+        if (lastMessageDate && lastMessageDate !== currentDateString) {
+            displayDateSeparator(formatChatDate(currentDate.toISOString()));
+        }
+    }
+    
     const messageDiv = document.createElement('div');
     messageDiv.className = 'message system';
+    
+    // Add proper date metadata to system messages
+    messageDiv.dataset.messageDate = currentDateString;
+    messageDiv.dataset.messageId = `system_${Date.now()}`;
     
     const p = document.createElement('p');
     p.textContent = message;
@@ -693,6 +734,10 @@ function handleWebSocketMessage(data) {
                 return; // Exit early, don't display the message
             }
             
+            if (data.message_type !== 'system') {
+                addDateSeparatorIfNeeded(data);
+            }
+            
             // Clear the last sent message ID since we received it from server
             if (window.lastSentMessageId) {
                 window.lastSentMessageId = null;
@@ -804,10 +849,17 @@ document.addEventListener('submit', async function(e) {
                 
                 const chatInterface = document.getElementById('chatInterface');
                 if (chatInterface) {
+                    const currentDate = new Date();
+                    const currentDateString = currentDate.toDateString();
+                    const formattedDate = formatChatDate(currentDate.toISOString());
+                    
                     chatInterface.innerHTML = `
                         <div class="chat-window" data-session-id="${result.session_id}">
                             <div class="messages-container" id="messagesContainer">
-                                <div class="message system">
+                                <div class="date-separator ${getDateType(formattedDate)}" data-separator-id="date_${currentDateString.replace(/[^a-zA-Z0-9]/g, '_')}">
+                                    <div class="date-badge">${formattedDate}</div>
+                                </div>
+                                <div class="message system" data-message-date="${currentDateString}" data-message-id="system_${Date.now()}">
                                     <p>Connecting to support...</p>
                                 </div>
                             </div>
@@ -1001,8 +1053,29 @@ function displayMessage(data) {
         return;
     }
     
+    // Check if this is a date separator from server
+    if (data.type === 'date_separator') {
+        displayDateSeparator(data.date, data.id);
+        return;
+    }
+    
     // Ensure message has proper timestamp
     data = ensureMessageTimestamp(data);
+    
+    // Check if we need to add a date separator before this message
+    const existingMessages = container.querySelectorAll('.message:not(.date-separator)');
+    if (existingMessages.length > 0) {
+        const lastMessage = existingMessages[existingMessages.length - 1];
+        const lastMessageDate = lastMessage.dataset.messageDate;
+        const currentMessageDate = new Date(data.created_at || data.timestamp || Date.now()).toDateString();
+        
+        if (lastMessageDate !== currentMessageDate) {
+            displayDateSeparator(formatChatDate(data.created_at || data.timestamp));
+        }
+    } else {
+        // First message, always show date separator
+        displayDateSeparator(formatChatDate(data.created_at || data.timestamp));
+    }
     
     // Use the same ID generation logic as refreshMessagesForSession
     const messageContent = data.message ? data.message.toLowerCase().trim() : '';
@@ -1015,6 +1088,10 @@ function displayMessage(data) {
     displayedMessages.add(messageId);
     
     const messageDiv = document.createElement('div');
+    
+    // Set the message date for future date separator checks
+    messageDiv.dataset.messageId = data.id || messageId;
+    messageDiv.dataset.messageDate = new Date(data.created_at || data.timestamp || Date.now()).toDateString();
     
     // Handle system messages specially - check for message_type = 'system'
     if (data.message_type === 'system') {
@@ -1067,7 +1144,7 @@ function displayMessage(data) {
         
         const time = document.createElement('div');
         time.className = 'message-time';
-        time.textContent = formatTime(data.timestamp);
+        time.textContent = formatTime(data.timestamp || data.created_at);
         
         bubble.appendChild(time);
         messageContent.appendChild(bubble);
@@ -1079,6 +1156,114 @@ function displayMessage(data) {
     
     container.appendChild(messageDiv);
     container.scrollTop = container.scrollHeight;
+}
+
+//Date separator functions for customers
+function displayDateSeparator(dateString, id = null) {
+    const container = safeGetElement('messagesContainer');
+    if (!container) return;
+
+    // Create a unique identifier for this date
+    const dateId = id || `date_${dateString.replace(/[^a-zA-Z0-9]/g, '_')}`;
+    
+    // Check if date separator already exists for this specific date
+    if (container.querySelector(`[data-separator-id="${dateId}"]`)) {
+        return; // Already exists, don't add another
+    }
+
+    // Also check by date string content to prevent duplicates
+    const existingSeparators = container.querySelectorAll('.date-separator .date-badge');
+    for (let separator of existingSeparators) {
+        if (separator.textContent.trim() === dateString.trim()) {
+            return; // Already exists, don't add another
+        }
+    }
+
+    // Determine date type for styling
+    const dateType = getDateType(dateString);
+    
+    const separatorDiv = document.createElement('div');
+    separatorDiv.className = `date-separator ${dateType}`;
+    separatorDiv.dataset.separatorId = dateId;
+    
+    separatorDiv.innerHTML = `
+        <div class="date-badge">${dateString}</div>
+    `;
+
+    // Add animation class for new separators
+    separatorDiv.classList.add('new');
+    
+    container.appendChild(separatorDiv);
+    
+    // Remove animation class after animation completes
+    setTimeout(() => {
+        separatorDiv.classList.remove('new');
+    }, 300);
+}
+
+function formatChatDate(timestamp) {
+    const date = new Date(timestamp);
+    const today = new Date();
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    // Helper function to format date as DD-MM-YYYY
+    const formatDDMMYYYY = (d) => {
+        const day = d.getDate().toString().padStart(2, '0');
+        const month = (d.getMonth() + 1).toString().padStart(2, '0');
+        const year = d.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
+    
+    // Check if it's today
+    if (date.toDateString() === today.toDateString()) {
+        return `Today, ${formatDDMMYYYY(date)}`;
+    } 
+    // Check if it's yesterday
+    else if (date.toDateString() === yesterday.toDateString()) {
+        return `Yesterday, ${formatDDMMYYYY(date)}`;
+    } 
+    // For other dates, show full date with day name
+    else {
+        return date.toLocaleDateString('en-US', { 
+            weekday: 'long',
+            month: 'short', 
+            day: 'numeric', 
+            year: 'numeric' 
+        });
+    }
+}
+
+function getDateType(dateString) {
+    if (dateString.includes('Today')) {
+        return 'today';
+    } else if (dateString.includes('Yesterday')) {
+        return 'yesterday';
+    }
+    return '';
+}
+
+// Function to add date separator when receiving new messages via WebSocket
+function addDateSeparatorIfNeeded(newMessage) {
+    const container = safeGetElement('messagesContainer');
+    if (!container) return false;
+
+    const lastMessage = container.querySelector('.message:last-child:not(.date-separator)');
+    if (!lastMessage) {
+        // First message, always add date separator
+        displayDateSeparator(formatChatDate(newMessage.created_at || newMessage.timestamp));
+        return true;
+    }
+
+    const lastMessageDate = lastMessage.dataset.messageDate;
+    const newMessageDate = new Date(newMessage.created_at || newMessage.timestamp || Date.now()).toDateString();
+
+    if (lastMessageDate !== newMessageDate) {
+        displayDateSeparator(formatChatDate(newMessage.created_at || newMessage.timestamp));
+        return true;
+    }
+
+    return false;
 }
 
 function updateWaitingSessions(sessions) {
@@ -1328,9 +1513,30 @@ async function sendQuickResponse(type) {
     }
 }
 
+function initializeChatContainer() {
+    const container = safeGetElement('messagesContainer');
+    if (container) {
+        // Add appropriate class based on user type
+        const userType = getUserType();
+        if (userType === 'agent') {
+            container.closest('.chat-window')?.classList.add('admin-chat');
+            // Also add to the main dashboard
+            document.querySelector('.admin-dashboard')?.classList.add('chat-dashboard');
+        } else {
+            // For customer chat, add customer-chat class
+            container.closest('.chat-window')?.classList.add('customer-chat');
+            // Also add to container
+            container.closest('.chat-container')?.classList.add('customer-chat');
+        }
+    }
+}
+
 // Initialize WebSocket on page load
 document.addEventListener('DOMContentLoaded', async function() {
     displayedMessages.clear();
+    
+    // Initialize chat container classes
+    initializeChatContainer();
     
     // Initialize agent name if available (for admin interface)
     if (typeof currentUsername !== 'undefined' && currentUsername) {

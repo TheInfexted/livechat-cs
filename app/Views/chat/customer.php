@@ -1,6 +1,8 @@
 <?= $this->extend('layouts/main') ?>
 
 <?= $this->section('content') ?>
+<link rel="stylesheet" href="<?= base_url('assets/css/date.css?v=' . time()) ?>">
+
 <div class="chat-container customer-chat">
     <div class="chat-header">
         <h3>Customer Support</h3>
@@ -55,7 +57,7 @@
                     </form>
         </div>
         <?php else: ?>
-        <div class="chat-window" data-session-id="<?= $session_id ?>">
+        <div class="chat-window customer-chat" data-session-id="<?= $session_id ?>">
             <div class="messages-container" id="messagesContainer">
                 <div class="message system">
                     <p>Connecting to support...</p>
@@ -104,8 +106,6 @@
         if (sessionId) {
             fetchQuickActions();
         }
-        
-        // Form submission handler is in chat.js - no need for duplicate here
     });
 
     function fetchQuickActions() {
@@ -255,7 +255,6 @@
         }
     }
     
-    // Add missing displaySystemMessage function for customer view
     function displaySystemMessage(message) {
         const container = document.getElementById('messagesContainer');
         if (!container) return;
@@ -334,8 +333,6 @@
                     </form>
                 </div>
             `;
-            
-            // Form submission will be handled by the global chat.js event listener
         }
     }
 

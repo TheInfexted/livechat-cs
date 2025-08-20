@@ -1129,3 +1129,102 @@ body {
 .show-quick-actions-btn:hover {
     background: #138496;
 }
+
+/* Customer chat date separators */
+.customer-chat .date-separator {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px 0 15px 0;
+    position: relative;
+    clear: both;
+    width: 100%;
+}
+
+.customer-chat .date-separator .date-badge {
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 500;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    white-space: nowrap;
+    z-index: 2;
+    position: relative;
+    text-align: center;
+    letter-spacing: 0.3px;
+}
+
+/* Today/Yesterday special styling for customers */
+.customer-chat .date-separator.today .date-badge {
+    background: #4caf50;
+    color: white;
+}
+
+.customer-chat .date-separator.yesterday .date-badge {
+    background: #ff9800;
+    color: white;
+}
+
+/* Customer chat specific styling */
+.customer-chat .date-separator .date-badge {
+    background: #667eea;
+    color: white;
+    font-size: 11px;
+    padding: 5px 10px;
+    border-radius: 10px;
+    font-weight: 600;
+}
+
+/* Animation for new date separators in customer chat */
+@keyframes fadeInDate {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.customer-chat .date-separator.new {
+    animation: fadeInDate 0.3s ease-out;
+}
+
+/* Message spacing adjustments for customer chat */
+.customer-chat .message + .date-separator {
+    margin-top: 25px;
+}
+
+.customer-chat .date-separator + .message {
+    margin-top: 15px;
+}
+
+/* Responsive design for customer chat */
+@media (max-width: 768px) {
+    .customer-chat .date-separator {
+        margin: 15px 0 12px 0;
+    }
+    
+    .customer-chat .date-separator .date-badge {
+        font-size: 10px;
+        padding: 4px 8px;
+        border-radius: 8px;
+    }
+}
+
+/* Ensure proper message layout with date separators */
+.customer-chat .messages-container {
+    display: flex;
+    flex-direction: column;
+}
+
+.customer-chat .date-separator {
+    order: 0; /* Ensure date separators appear in correct order */
+}
+
+.customer-chat .message {
+    order: 1; /* Messages appear after date separators */
+}
