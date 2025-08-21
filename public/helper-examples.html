@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LiveChat Helper - Usage Examples</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 2px solid #007bff;
+            padding-bottom: 10px;
+        }
+        .example-section {
+            margin: 30px 0;
+            padding: 20px;
+            background: #f8f9fa;
+            border-left: 4px solid #007bff;
+            border-radius: 4px;
+        }
+        .code-block {
+            background: #2d3748;
+            color: #e2e8f0;
+            padding: 15px;
+            border-radius: 6px;
+            overflow-x: auto;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 14px;
+            margin: 15px 0;
+        }
+        .demo-buttons {
+            margin: 20px 0;
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 10px 10px 0;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        button.secondary {
+            background: #6c757d;
+        }
+        button.secondary:hover {
+            background: #545b62;
+        }
+        .nav-demo {
+            background: #343a40;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+        }
+        .nav-demo a {
+            color: white;
+            text-decoration: none;
+            margin-right: 20px;
+            padding: 8px 12px;
+        }
+        .nav-demo a:hover {
+            background: rgba(255,255,255,0.1);
+            border-radius: 4px;
+        }
+        .nav-demo button {
+            background: #28a745;
+            margin-left: 20px;
+        }
+        .highlight {
+            background: #fff3cd;
+            padding: 10px;
+            border-radius: 4px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>LiveChat Helper - Usage Examples</h1>
+        
+        <p>This page demonstrates how external websites can integrate with our LiveChat system using the helper script. <strong>No widget buttons are created</strong> - websites use their own custom buttons/links.</p>
+        
+        <div class="example-section">
+            <h2>Basic Setup</h2>
+            <p>Add these two script tags to your website:</p>
+            <div class="code-block">
+&lt;!-- Load the LiveChat Helper --&gt;
+&lt;script src="https://livechat.kopisugar.cc/assets/js/livechat-helper.js"&gt;&lt;/script&gt;
+
+&lt;!-- Initialize with your API key --&gt;
+&lt;script&gt;
+LiveChatHelper.init({
+    apiKey: 'lc_98b277c9f9c4f2f5b9f0dcb46748ab1a3f6360c6b6490edc',
+    debug: true // Set to false in production
+});
+&lt;/script&gt;
+            </div>
+            
+            <div class="highlight">
+                <strong>That's it!</strong> No widgets or buttons are created. You have full control over your chat button design and placement.
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Example 1: Navigation Bar Integration</h2>
+            <p>A typical website navigation with a custom Live Chat button:</p>
+            
+            <!-- Demo Navigation -->
+            <div class="nav-demo">
+                <a href="#">Home</a>
+                <a href="#">Products</a>
+                <a href="#">About</a>
+                <a href="#">Contact</a>
+                <button onclick="navChatExample()">💬 Live Support</button>
+            </div>
+            
+            <div class="code-block">
+&lt;nav class="main-navigation"&gt;
+    &lt;a href="/home"&gt;Home&lt;/a&gt;
+    &lt;a href="/products"&gt;Products&lt;/a&gt;
+    &lt;a href="/about"&gt;About&lt;/a&gt;
+    &lt;button onclick="openSupport()" class="nav-chat-btn"&gt;💬 Live Support&lt;/button&gt;
+&lt;/nav&gt;
+
+&lt;script&gt;
+function openSupport() {
+    LiveChatHelper.openChat({
+        userId: 'current_user_id',    // From your user system
+        name: 'Current User Name',
+        email: 'user@example.com'
+    });
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Example 2: Anonymous Visitor Support</h2>
+            <p>For visitors who aren't logged in:</p>
+            
+            <div class="demo-buttons">
+                <button onclick="anonymousChatExample()">Anonymous Support Chat</button>
+            </div>
+            
+            <div class="code-block">
+&lt;button onclick="startAnonymousChat()" class="help-button"&gt;
+    Need Help? Chat with us!
+&lt;/button&gt;
+
+&lt;script&gt;
+function startAnonymousChat() {
+    // No user data needed - creates anonymous session
+    LiveChatHelper.openAnonymousChat();
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Example 3: Logged-in User Support</h2>
+            <p>For authenticated users with full context:</p>
+            
+            <div class="demo-buttons">
+                <button onclick="userChatExample()">User Support Chat</button>
+            </div>
+            
+            <div class="code-block">
+&lt;button onclick="openUserSupport()" class="dashboard-help"&gt;Get Help&lt;/button&gt;
+
+&lt;script&gt;
+function openUserSupport() {
+    // Assuming you have user data available
+    const currentUser = getUserFromSession(); // Your function
+    
+    LiveChatHelper.openChat({
+        userId: currentUser.id,
+        name: currentUser.fullName,
+        email: currentUser.email
+    });
+    
+    // Or use the shorthand method:
+    // LiveChatHelper.openUserChat(currentUser.id, currentUser.name, currentUser.email);
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Example 4: E-commerce Product Support</h2>
+            <p>Product-specific support with context:</p>
+            
+            <div class="demo-buttons">
+                <button onclick="productSupportExample()">Product Support Chat</button>
+            </div>
+            
+            <div class="code-block">
+&lt;div class="product-page"&gt;
+    &lt;h1&gt;Amazing Product XYZ&lt;/h1&gt;
+    &lt;button onclick="askAboutProduct()" class="product-question-btn"&gt;
+        Ask about this product
+    &lt;/button&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+function askAboutProduct() {
+    const productId = 'product-xyz-123';
+    const productName = 'Amazing Product XYZ';
+    
+    LiveChatHelper.openChat({
+        userId: currentUser?.id || 'visitor_' + Date.now(),
+        name: currentUser?.name || 'Visitor',
+        email: currentUser?.email || '',
+        // You can add custom data in the user ID for context
+        userId: `${currentUser?.id || 'visitor'}_product_${productId}`
+    });
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Example 5: Contact Page Integration</h2>
+            <p>Multiple contact methods including live chat:</p>
+            
+            <div class="demo-buttons">
+                <button onclick="contactChatExample()">Contact Support Chat</button>
+            </div>
+            
+            <div class="code-block">
+&lt;div class="contact-methods"&gt;
+    &lt;div class="contact-option"&gt;
+        &lt;h3&gt;📧 Email Us&lt;/h3&gt;
+        &lt;p&gt;support@yoursite.com&lt;/p&gt;
+    &lt;/div&gt;
+    &lt;div class="contact-option"&gt;
+        &lt;h3&gt;💬 Live Chat&lt;/h3&gt;
+        &lt;button onclick="startLiveChat()"&gt;Chat Now&lt;/button&gt;
+    &lt;/div&gt;
+    &lt;div class="contact-option"&gt;
+        &lt;h3&gt;📞 Call Us&lt;/h3&gt;
+        &lt;p&gt;+1 (555) 123-4567&lt;/p&gt;
+    &lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script&gt;
+function startLiveChat() {
+    LiveChatHelper.openChat({
+        userId: 'contact_visitor_' + Date.now(),
+        name: 'Contact Page Visitor'
+    });
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Advanced Configuration</h2>
+            <p>Customize the helper behavior:</p>
+            <div class="code-block">
+&lt;script&gt;
+LiveChatHelper.init({
+    apiKey: 'lc_98b277c9f9c4f2f5b9f0dcb46748ab1a3f6360c6b6490edc',
+    debug: false, // Set to true for debugging
+    windowFeatures: 'width=600,height=800,scrollbars=yes,resizable=yes',
+    windowName: 'support_chat',
+    onError: function(message) {
+        // Custom error handling instead of alert()
+        showNotification('Chat Error: ' + message, 'error');
+    }
+});
+
+// Check if helper is ready
+if (LiveChatHelper.isReady()) {
+    console.log('LiveChat Helper is ready to use');
+}
+&lt;/script&gt;
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>What Happens When Clicked?</h2>
+            <ol>
+                <li>Helper calls your <code>/api/getChatroomLink</code> endpoint</li>
+                <li>API returns a secure chatroom link with user context</li>
+                <li>Link opens in a new window/tab (customizable size)</li>
+                <li>User chats directly with your support agents</li>
+                <li>No interference with the original website</li>
+            </ol>
+            
+            <div class="demo-buttons">
+                <button onclick="testBasicChat()" class="secondary">Test Basic Chat</button>
+                <button onclick="testUserChat()" class="secondary">Test User Chat</button>
+                <button onclick="testAnonymousChat()" class="secondary">Test Anonymous Chat</button>
+            </div>
+        </div>
+        
+        <div class="example-section">
+            <h2>Benefits</h2>
+            <ul>
+                <li>✅ <strong>No widget interference</strong> - Use your own buttons</li>
+                <li>✅ <strong>Complete design control</strong> - Style buttons however you want</li>
+                <li>✅ <strong>Flexible placement</strong> - Navbar, footer, contact page, anywhere</li>
+                <li>✅ <strong>User context preserved</strong> - Logged-in users maintain identity</li>
+                <li>✅ <strong>New window</strong> - Doesn't navigate away from your site</li>
+                <li>✅ <strong>Mobile friendly</strong> - Responsive chat window</li>
+                <li>✅ <strong>Easy integration</strong> - Just 2 script tags + function calls</li>
+            </ul>
+        </div>
+    </div>
+    
+    <!-- Load the actual helper for demonstration -->
+    <script src="assets/js/livechat-helper.js"></script>
+    <script>
+        // Initialize the helper
+        LiveChatHelper.init({
+            apiKey: 'lc_98b277c9f9c4f2f5b9f0dcb46748ab1a3f6360c6b6490edc',
+            debug: true
+        });
+        
+        // Example functions for demo buttons
+        function navChatExample() {
+            LiveChatHelper.openChat({
+                userId: 'nav_user_' + Date.now(),
+                name: 'Navigation User',
+                email: 'nav@example.com'
+            });
+        }
+        
+        function anonymousChatExample() {
+            LiveChatHelper.openAnonymousChat();
+        }
+        
+        function userChatExample() {
+            LiveChatHelper.openUserChat('user123', 'Demo User', 'demo@example.com');
+        }
+        
+        function productSupportExample() {
+            LiveChatHelper.openChat({
+                userId: 'product_visitor_' + Date.now(),
+                name: 'Product Visitor',
+                email: 'visitor@example.com'
+            });
+        }
+        
+        function contactChatExample() {
+            LiveChatHelper.openChat({
+                userId: 'contact_' + Date.now(),
+                name: 'Contact Page User'
+            });
+        }
+        
+        function testBasicChat() {
+            LiveChatHelper.openChat({
+                userId: 'test_' + Date.now(),
+                name: 'Test User',
+                email: 'test@example.com'
+            });
+        }
+        
+        function testUserChat() {
+            LiveChatHelper.openUserChat('testuser123', 'Test User', 'testuser@example.com');
+        }
+        
+        function testAnonymousChat() {
+            LiveChatHelper.openAnonymousChat();
+        }
+    </script>
+</body>
+</html>

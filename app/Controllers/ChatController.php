@@ -2,6 +2,8 @@
 
 namespace App\Controllers;
 
+use Exception;
+
 class ChatController extends General
 {
     public function index()
@@ -420,7 +422,100 @@ class ChatController extends General
         
         return $this->jsonResponse(['error' => 'Session not found'], 404);
     }
-
+    
+    /**
+     * Get chatroom link for frontend integration
+     * This is the actual endpoint that generates chatroom links
+     */
+    public function getChatroomLink()
+    {
+        try {
+            // Get request data (support both POST and GET)
+            $userId = $this->sanitizeInput($this->request->getPost('user_id')) ?: 
+                     $this->sanitizeInput($this->request->getGet('user_id'));
+            
+            $sessionInfo = $this->sanitizeInput($this->request->getPost('session_info')) ?: 
+                          $this->sanitizeInput($this->request->getGet('session_info'));
+            
+            $apiKey = $this->sanitizeInput($this->request->getPost('api_key')) ?: 
+                     $this->sanitizeInput($this->request->getGet('api_key'));
+            
+            // Get domain for API key validation (if API key provided)
+            $domain = $this->request->getServer('HTTP_ORIGIN') ?: $this->request->getServer('HTTP_REFERER');
+            if ($domain) {
+                $parsedUrl = parse_url($domain);
+                $domain = $parsedUrl['host'] ?? $domain;
+            }
+            
+            // Basic validation - at least user_id should be provided
+            if (empty($userId)) {
+                $userId = 'anonymous_' . uniqid();
+            }
+            
+            // For now, generate a simple chatroom link based on user_id
+            // This creates a direct link to the livechat system with the user context
+            $baseUrl = rtrim(config('App')->baseURL, '/');
+            
+            // Generate chatroom parameters
+            $chatroomParams = [
+                'user_id' => $userId,
+                'session_info' => $sessionInfo,
+                'timestamp' => time(),
+                'iframe' => '1' // Enable iframe mode for external integration
+            ];
+            
+            // Add API key to params if provided
+            if ($apiKey) {
+                $chatroomParams['api_key'] = $apiKey;
+            }
+            
+            // Add role information if it can be inferred
+            if (!empty($sessionInfo) && strpos($sessionInfo, 'logged_user') !== false) {
+                $chatroomParams['user_role'] = 'loggedUser';
+                // Parse user info from session_info if structured
+                if (strpos($sessionInfo, '|') !== false) {
+                    $parts = explode('|', $sessionInfo);
+                    foreach ($parts as $part) {
+                        if (strpos($part, 'name:') === 0) {
+                            $chatroomParams['external_fullname'] = substr($part, 5);
+                        } elseif (strpos($part, 'username:') === 0) {
+                            $chatroomParams['external_username'] = substr($part, 9);
+                        } elseif (strpos($part, 'id:') === 0) {
+                            $chatroomParams['external_system_id'] = substr($part, 3);
+                        }
+                    }
+                }
+            } else {
+                $chatroomParams['user_role'] = 'anonymous';
+            }
+            
+            // Build the chatroom URL
+            $chatroomLink = $baseUrl . '/?' . http_build_query($chatroomParams);
+            
+            // Return successful response
+            return $this->jsonResponse([
+                'success' => true,
+                'chatroom_link' => $chatroomLink,
+                'user_id' => $userId,
+                'timestamp' => time()
+            ]);
+            
+        } catch (Exception $e) {
+            // Log error but return a working fallback response
+            error_log("getChatroomLink Error: " . $e->getMessage());
+            
+            $baseUrl = rtrim(config('App')->baseURL, '/');
+            $fallbackUserId = $userId ?? 'anonymous_' . uniqid();
+            
+            return $this->jsonResponse([
+                'success' => true,
+                'chatroom_link' => $baseUrl . '/?user_id=' . urlencode($fallbackUserId) . '&iframe=1',
+                'user_id' => $fallbackUserId,
+                'timestamp' => time(),
+                'note' => 'Fallback response - system error handled'
+            ]);
+        }
+    }
     /**
      * Send message via API
      */

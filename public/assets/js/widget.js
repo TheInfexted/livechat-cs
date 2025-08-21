@@ -254,6 +254,16 @@
             overflow: hidden;
         }
         
+        /* Modal positioning - direct classes */
+        .live-chat-modal.position-bottom-right {
+            right: 20px;
+        }
+        
+        .live-chat-modal.position-bottom-left {
+            left: 20px;
+        }
+        
+        /* Fallback - legacy widget wrapper selectors */
         .live-chat-widget.position-bottom-right .live-chat-modal {
             right: 20px;
         }
@@ -313,22 +323,71 @@
             display: block;
         }
         
-        /* Mobile adjustments */
+        /* Mobile adjustments - Fullscreen chat */
         @media (max-width: 768px) {
             .live-chat-modal {
-                width: calc(100vw - 40px);
-                height: calc(100vh - 140px);
+                width: 100vw !important;
+                height: 100vh !important;
+                height: 100dvh !important; /* Dynamic viewport height for mobile keyboards */
+                min-height: 100vh !important;
+                min-height: 100dvh !important;
+                max-height: 100vh !important;
+                max-height: 100dvh !important;
+                bottom: 0 !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                border-radius: 0;
+                box-shadow: none;
+                z-index: 999999; /* Higher than chat button */
+                display: flex !important;
+                flex-direction: column !important;
+                position: fixed !important;
+            }
+            
+            .live-chat-modal-header {
+                padding: 15px 20px;
+                position: sticky;
+                top: 0;
+                z-index: 1;
+                flex-shrink: 0; /* Prevent header from shrinking */
+                height: auto;
+            }
+            
+            .live-chat-iframe {
+                flex: 1 !important;
+                height: auto !important;
+                min-height: 0; /* Allow iframe to shrink */
+                width: 100% !important;
+                border: none !important;
+            }
+            
+            /* Hide overlay on mobile since chat takes full screen */
+            .live-chat-overlay {
+                display: none;
+            }
+            
+            /* Hide chat button when modal is open on mobile */
+            .live-chat-modal.open ~ .live-chat-widget .live-chat-button {
+                display: none;
+            }
+            
+            /* Alternative approach - hide the entire widget container when modal is open */
+            body:has(.live-chat-modal.open) .live-chat-widget {
+                display: none;
+            }
+            
+            /* Fallback for browsers that don't support :has() */
+            .live-chat-widget.modal-open {
+                display: none;
+            }
+            
+            /* Adjust welcome bubble position on mobile */
+            .live-chat-welcome-bubble {
                 bottom: 90px;
-            }
-            
-            .live-chat-widget.position-bottom-right .live-chat-modal {
-                right: 20px;
-                left: auto;
-            }
-            
-            .live-chat-widget.position-bottom-left .live-chat-modal {
-                left: 20px;
-                right: auto;
+                right: 10px;
+                left: 10px;
+                max-width: calc(100vw - 20px);
             }
         }
         
@@ -612,6 +671,11 @@
             this.elements.overlay.classList.add('open');
             this.elements.button.classList.add('open');
             
+            // Hide widget on mobile when modal is open (for browsers that don't support :has())
+            if (window.innerWidth <= 768) {
+                this.elements.container.classList.add('modal-open');
+            }
+            
             this.isOpen = true;
             
             if (this.config.callbacks.onOpen) {
@@ -625,9 +689,9 @@
             this.elements.overlay.className = 'live-chat-overlay';
             this.elements.overlay.onclick = () => this.close();
             
-            // Create modal
+            // Create modal with positioning classes from widget container
             this.elements.modal = document.createElement('div');
-            this.elements.modal.className = 'live-chat-modal';
+            this.elements.modal.className = `live-chat-modal ${this.elements.container.className.replace('live-chat-widget', '').trim()}`;
             this.elements.modal.innerHTML = `
                 <div class="live-chat-modal-header">
                     <h3>${this.config.branding.title}</h3>
@@ -650,6 +714,9 @@
                 this.elements.overlay.classList.remove('open');
             }
             this.elements.button.classList.remove('open');
+            
+            // Show widget again on mobile when modal is closed
+            this.elements.container.classList.remove('modal-open');
             
             this.isOpen = false;
             
