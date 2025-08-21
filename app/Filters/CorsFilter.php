@@ -13,8 +13,9 @@ class CorsFilter implements FilterInterface
         if ($request->getMethod() === 'OPTIONS') {
             $response = service('response');
             $response->setHeader('Access-Control-Allow-Origin', '*')
-                     ->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-                     ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+                     ->setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                     ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                     ->setHeader('Access-Control-Max-Age', '86400')
                      ->setStatusCode(200);
             return $response;
         }
@@ -23,8 +24,9 @@ class CorsFilter implements FilterInterface
     public function after(RequestInterface $request, ResponseInterface $response, $arguments = null)
     {
         $response->setHeader('Access-Control-Allow-Origin', '*')
-                 ->setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-                 ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+                 ->setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS')
+                 ->setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With, Accept')
+                 ->setHeader('Access-Control-Max-Age', '86400');
         return $response;
     }
 }

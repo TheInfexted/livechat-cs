@@ -429,6 +429,12 @@ class ChatController extends General
      */
     public function getChatroomLink()
     {
+        // Explicitly set CORS headers for this endpoint
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept');
+        header('Access-Control-Max-Age: 86400');
+        
         try {
             // Get request data (support both POST and GET)
             $userId = $this->sanitizeInput($this->request->getPost('user_id')) ?: 

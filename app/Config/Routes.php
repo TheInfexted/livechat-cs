@@ -42,6 +42,15 @@ $routes->group('api', function($routes) {
     $routes->post('chat/send-message', 'ChatController::sendMessage');
     $routes->get('chat/check-status/(:segment)', 'ChatController::checkStatus/$1');
     
+    // CORS preflight OPTIONS route for getChatroomLink (must come before match route)
+    $routes->options('getChatroomLink', function() {
+        header('Access-Control-Allow-Origin: *');
+        header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+        header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With');
+        http_response_code(200);
+        exit();
+    });
+    
     // Frontend integration route for getting chatroom links
     $routes->match(['get', 'post'], 'getChatroomLink', 'ChatController::getChatroomLink');
     
