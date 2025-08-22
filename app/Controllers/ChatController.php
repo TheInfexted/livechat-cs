@@ -24,6 +24,7 @@ class ChatController extends General
         
         // Handle iframe integration parameters
         $isIframe = $this->request->getGet('iframe') === '1';
+        $isFullscreen = $this->request->getGet('fullscreen') === '1';
         $apiKey = $this->sanitizeInput($this->request->getGet('api_key'));
         $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
         $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
@@ -46,6 +47,7 @@ class ChatController extends General
             'title' => 'Customer Support Chat',
             'session_id' => $validSession,
             'is_iframe' => $isIframe,
+            'is_fullscreen' => $isFullscreen,
             'external_username' => $externalUsername,
             'external_fullname' => $externalFullname,
             'external_system_id' => $externalSystemId,

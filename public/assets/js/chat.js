@@ -1058,7 +1058,12 @@ function sendTypingIndicator(typing) {
 function handleTypingIndicator(data) {
     const indicator = document.getElementById('typingIndicator');
     if (indicator) {
-        if (data.is_typing && data.user_type !== getUserType()) {
+        // Only show typing indicator if:
+        // 1. Someone is actually typing (data.is_typing is true)
+        // 2. It's not the current user typing (data.user_type !== getUserType())
+        // 3. The data contains a valid session_id that matches current session
+        const currentSession = getSessionId();
+        if (data.is_typing && data.user_type !== getUserType() && data.session_id === currentSession) {
             indicator.style.display = 'flex';
         } else {
             indicator.style.display = 'none';

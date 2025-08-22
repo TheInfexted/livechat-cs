@@ -1,265 +1,565 @@
 /**
- * LiveChat Helper - API Integration for External Websites
- * Version: 1.0
+ * LiveChat Helper - API Integration with Embed Support
+ * Version: 2.0.0
  * 
- * This helper allows external websites to integrate with our LiveChat system
- * without creating any widget buttons. Websites use their own buttons/links
- * and call our API to open chat sessions.
- * 
- * Usage:
- * <script src="https://livechat.kopisugar.cc/assets/js/livechat-helper.js"></script>
- * <script>
- * LiveChatHelper.init({
- *     apiKey: 'api-key',
- * });
- * 
- * // From any button click:
- * LiveChatHelper.openChat({
- *     userId: 'user123',
- *     name: 'John Doe',
- *     email: 'john@example.com'
- * });
- * </script>
+ * This helper provides both popup and embedded iframe options
  */
 
 (function() {
     'use strict';
-    
-    // Prevent multiple instances
-    if (window.LiveChatHelper) {
-        return;
-    }
-    
-    const LiveChatHelper = {
+
+    window.LiveChatHelper = {
+        // Configuration
         config: {
             apiKey: '',
-            baseUrl: '',
-            apiEndpoint: '/api/getChatroomLink',
-            windowFeatures: 'width=500,height=700,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no',
-            windowName: 'livechat',
-            debug: false
-        },
-        
-        // Initialize the helper with configuration
-        init: function(userConfig = {}) {
-            // Merge user config with defaults
-            this.config = Object.assign(this.config, userConfig);
-            
-            // Auto-detect base URL if not provided
-            if (!this.config.baseUrl) {
-                this.config.baseUrl = this.detectBaseUrl();
-            }
-            
-            // Ensure baseURL doesn't end with slash
-            this.config.baseUrl = this.config.baseUrl.replace(/\/$/, '');
-            
-            // Validate required config
-            if (!this.config.apiKey) {
-                console.error('LiveChatHelper: API key is required');
-                return false;
-            }
-            
-            this.log('Initialized with config:', this.config);
-            return true;
-        },
-        
-        // Auto-detect base URL from script tag
-        detectBaseUrl: function() {
-            const scripts = document.querySelectorAll('script[src*="livechat-helper.js"]');
-            if (scripts.length > 0) {
-                const scriptSrc = scripts[0].src;
-                const url = new URL(scriptSrc);
-                return `${url.protocol}//${url.host}`;
-            }
-            
-            // Fallback - this should be updated to your actual domain
-            console.warn('LiveChatHelper: Could not auto-detect base URL, using fallback');
-            return 'https://livechat.kopisugar.cc';
-        },
-        
-        // Main function to open chat
-        openChat: async function(userData = {}) {
-            if (!this.config.apiKey) {
-                console.error('LiveChatHelper: Not initialized. Call LiveChatHelper.init() first.');
-                return null;
-            }
-            
-            try {
-                this.log('Opening chat for user:', userData);
-                
-                // Prepare request data
-                const requestData = this.prepareRequestData(userData);
-                
-                // Call API to get chatroom link
-                const chatLink = await this.getChatroomLink(requestData);
-                
-                if (chatLink) {
-                    // Open chat in new window
-                    const chatWindow = this.openChatWindow(chatLink);
-                    
-                    if (!chatWindow) {
-                        this.showError('Please allow pop-ups for this site to use live chat.');
-                        return null;
-                    }
-                    
-                    this.log('Chat window opened successfully');
-                    return chatWindow;
-                } else {
-                    this.showError('Unable to start chat session.');
-                    return null;
+            baseUrl: 'https://livechat.kopisugar.cc',
+            mode: 'popup', // 'popup' | 'embed' | 'widget'
+            embedConfig: {
+                theme: 'modern',
+                position: 'fixed',
+                animation: {
+                    duration: 300,
+                    easing: 'cubic-bezier(0.4, 0, 0.2, 1)'
                 }
-                
-            } catch (error) {
-                console.error('LiveChatHelper: Error opening chat:', error);
-                this.showError('Unable to start chat. Please try again later.');
-                return null;
             }
         },
-        
-        // Prepare request data for API call
-        prepareRequestData: function(userData) {
-            const requestData = {
-                user_id: userData.userId || userData.id || 'anonymous_' + Date.now(),
-                api_key: this.config.apiKey
-            };
-            
-            // Build session_info string
-            if (userData.name || userData.email || userData.userId || userData.id) {
-                const sessionParts = ['logged_user'];
-                
-                if (userData.name || userData.fullName) {
-                    sessionParts.push('name:' + (userData.name || userData.fullName));
-                }
-                
-                if (userData.email || userData.username) {
-                    sessionParts.push('username:' + (userData.email || userData.username));
-                }
-                
-                if (userData.userId || userData.id || userData.systemId) {
-                    sessionParts.push('id:' + (userData.userId || userData.id || userData.systemId));
-                }
-                
-                requestData.session_info = sessionParts.join('|');
-            } else {
-                requestData.session_info = 'anonymous';
+
+        // Reference to embed instance
+        embedInstance: null,
+
+        /**
+         * Initialize the LiveChat Helper
+         * @param {Object} options - Configuration options
+         */
+        init: function(options) {
+            // Merge options with default config
+            this.config = Object.assign({}, this.config, options);
+
+            // Initialize embed if in embed mode
+            if (this.config.mode === 'embed') {
+                this.initEmbed();
             }
             
-            return requestData;
+            // Initialize widget if in widget mode
+            if (this.config.mode === 'widget') {
+                this.initWidget();
+            }
         },
-        
-        // Call the getChatroomLink API
-        getChatroomLink: async function(requestData) {
-            const apiUrl = this.config.baseUrl + this.config.apiEndpoint;
-            
-            this.log('Calling API:', apiUrl, requestData);
-            
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
+
+        /**
+         * Initialize the embed system
+         */
+        initEmbed: async function() {
+            // Dynamically load the embed script if not already loaded
+            if (!window.LiveChatEmbed) {
+                await this.loadScript(`${this.config.baseUrl}/assets/js/livechat-embed.js`);
+            }
+
+            // Create embed instance
+            this.embedInstance = new window.LiveChatEmbed({
+                apiKey: this.config.apiKey,
+                baseUrl: this.config.baseUrl,
+                ...this.config.embedConfig,
+                callbacks: {
+                    onOpen: () => {
+                        console.log('LiveChat embed opened');
+                        if (this.config.onOpen) this.config.onOpen();
                     },
-                    body: JSON.stringify(requestData)
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
+                    onClose: () => {
+                        console.log('LiveChat embed closed');
+                        if (this.config.onClose) this.config.onClose();
+                    },
+                    onReady: () => {
+                        console.log('LiveChat embed ready');
+                        if (this.config.onReady) this.config.onReady();
+                    },
+                    onError: (error) => {
+                        console.error('LiveChat embed error:', error);
+                        if (this.config.onError) this.config.onError(error);
+                    }
                 }
-                
-                const data = await response.json();
-                
-                this.log('API response:', data);
-                
-                if (data.success && data.chatroom_link) {
-                    return data.chatroom_link;
-                } else {
-                    throw new Error(data.error || 'Invalid API response');
-                }
-                
-            } catch (error) {
-                console.error('LiveChatHelper: API call failed:', error);
-                throw error;
+            });
+
+            // Initialize the embed
+            await this.embedInstance.init();
+        },
+
+        /**
+         * Initialize the widget system
+         */
+        initWidget: function() {
+            // Set global config for widget
+            window.LiveChatConfig = {
+                baseUrl: this.config.baseUrl,
+                apiKey: this.config.apiKey,
+                theme: this.config.theme || 'blue',
+                position: this.config.position || 'bottom-right'
+            };
+
+            // Load widget script
+            this.loadScript(`${this.config.baseUrl}/assets/js/widget.js`);
+        },
+
+        /**
+         * Open chat with user information
+         * @param {Object} userInfo - User information
+         */
+        openChat: function(userInfo) {
+            switch (this.config.mode) {
+                case 'embed':
+                    this.openEmbedChat(userInfo);
+                    break;
+                case 'fullscreen':
+                    this.openFullscreenChat(userInfo);
+                    break;
+                case 'widget':
+                    this.openWidgetChat(userInfo);
+                    break;
+                case 'popup':
+                default:
+                    this.openPopupChat(userInfo);
+                    break;
             }
         },
-        
-        // Open chat window
-        openChatWindow: function(chatLink) {
-            this.log('Opening chat window:', chatLink);
+
+        /**
+         * Open chat in embed mode
+         */
+        openEmbedChat: async function(userInfo) {
+            if (!this.embedInstance) {
+                await this.initEmbed();
+            }
             
-            try {
-                const chatWindow = window.open(
-                    chatLink,
-                    this.config.windowName,
-                    this.config.windowFeatures
-                );
-                
-                // Focus the new window if it opened successfully
-                if (chatWindow) {
-                    chatWindow.focus();
-                }
-                
-                return chatWindow;
-                
-            } catch (error) {
-                console.error('LiveChatHelper: Failed to open window:', error);
-                return null;
-            }
-        },
-        
-        // Quick method for anonymous chat
-        openAnonymousChat: function() {
-            return this.openChat({});
-        },
-        
-        // Quick method for logged-in user chat
-        openUserChat: function(userId, name, email) {
-            return this.openChat({
-                userId: userId,
-                name: name,
-                email: email
+            this.embedInstance.openChat({
+                userId: userInfo.userId || userInfo.id,
+                name: userInfo.name || userInfo.fullname,
+                email: userInfo.email,
+                username: userInfo.username
             });
         },
-        
-        // Show error to user
-        showError: function(message) {
-            // You can customize this to use your preferred notification method
-            if (typeof this.config.onError === 'function') {
-                this.config.onError(message);
+
+        /**
+         * Open chat in widget mode
+         */
+        openWidgetChat: function(userInfo) {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.updateUser({
+                    isLoggedIn: true,
+                    username: userInfo.username,
+                    fullname: userInfo.name || userInfo.fullname,
+                    systemId: userInfo.userId || userInfo.id
+                });
+                window.LiveChatWidget.open();
             } else {
-                alert('LiveChat: ' + message);
+                console.error('LiveChat widget not initialized');
             }
         },
-        
-        // Debug logging
-        log: function() {
-            if (this.config.debug) {
-                console.log('LiveChatHelper:', ...arguments);
+
+        /**
+         * Open chat in fullscreen mode (fills entire viewport)
+         */
+        openFullscreenChat: function(userInfo) {
+            this.createFullscreenIframe(userInfo);
+        },
+
+        /**
+         * Create fullscreen iframe that fills the entire viewport
+         */
+        createFullscreenIframe: function(userInfo) {
+            // Remove any existing fullscreen iframe
+            const existingContainer = document.getElementById('livechat-fullscreen-container');
+            if (existingContainer) {
+                existingContainer.remove();
+            }
+
+            // Inject fullscreen styles
+            this.injectFullscreenStyles();
+
+            // Create fullscreen iframe container
+            const container = document.createElement('div');
+            container.id = 'livechat-fullscreen-container';
+            container.className = 'livechat-fullscreen-container';
+
+            // Create loading indicator
+            const loader = document.createElement('div');
+            loader.className = 'livechat-fullscreen-loader';
+            loader.innerHTML = `
+                <div class="livechat-fullscreen-spinner"></div>
+                <p>Loading LiveChat...</p>
+            `;
+
+            // Create the iframe
+            const iframe = document.createElement('iframe');
+            iframe.id = 'livechat-fullscreen-frame';
+            iframe.className = 'livechat-fullscreen-iframe';
+            iframe.src = this.generateFullscreenChatUrl(userInfo);
+            iframe.setAttribute('frameborder', '0');
+            iframe.setAttribute('allowfullscreen', 'true');
+            iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts allow-forms allow-popups allow-top-navigation allow-modals');
+
+            // Handle iframe load
+            iframe.addEventListener('load', () => {
+                loader.style.display = 'none';
+                iframe.style.opacity = '1';
+            });
+
+            // Handle iframe error
+            iframe.addEventListener('error', () => {
+                loader.innerHTML = `
+                    <div class="livechat-fullscreen-error">
+                        <p>Failed to load LiveChat. Please try again.</p>
+                        <button onclick="document.getElementById('livechat-fullscreen-container').remove()">Close</button>
+                    </div>
+                `;
+            });
+
+            // Add close functionality with ESC key
+            const escHandler = (e) => {
+                if (e.key === 'Escape') {
+                    container.remove();
+                    document.removeEventListener('keydown', escHandler);
+                    if (this.config.onClose) this.config.onClose();
+                }
+            };
+            document.addEventListener('keydown', escHandler);
+
+            // Assemble the structure
+            container.appendChild(loader);
+            container.appendChild(iframe);
+
+            // Add to body
+            document.body.appendChild(container);
+
+            // Prevent body scrolling
+            document.body.style.overflow = 'hidden';
+
+            // Add close handler when container is removed
+            const observer = new MutationObserver((mutations) => {
+                mutations.forEach((mutation) => {
+                    if (mutation.type === 'childList') {
+                        mutation.removedNodes.forEach((node) => {
+                            if (node.id === 'livechat-fullscreen-container') {
+                                document.body.style.overflow = '';
+                                document.removeEventListener('keydown', escHandler);
+                                observer.disconnect();
+                            }
+                        });
+                    }
+                });
+            });
+            observer.observe(document.body, { childList: true });
+
+            // Call open callback
+            if (this.config.onOpen) {
+                this.config.onOpen();
             }
         },
-        
-        // Update configuration
-        updateConfig: function(newConfig) {
-            this.config = Object.assign(this.config, newConfig);
-            this.log('Config updated:', this.config);
+
+        /**
+         * Inject CSS styles for fullscreen mode
+         */
+        injectFullscreenStyles: function() {
+            if (document.getElementById('livechat-fullscreen-styles')) return;
+
+            const styles = document.createElement('style');
+            styles.id = 'livechat-fullscreen-styles';
+            styles.textContent = `
+                /* LiveChat Fullscreen Styles */
+                .livechat-fullscreen-container {
+                    position: fixed !important;
+                    top: 0 !important;
+                    left: 0 !important;
+                    right: 0 !important;
+                    bottom: 0 !important;
+                    width: 100vw !important;
+                    height: 100vh !important;
+                    z-index: 2147483647 !important;
+                    background: #ffffff !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    border: none !important;
+                    box-sizing: border-box !important;
+                }
+
+                .livechat-fullscreen-iframe {
+                    width: 100% !important;
+                    height: 100% !important;
+                    border: none !important;
+                    margin: 0 !important;
+                    padding: 0 !important;
+                    display: block !important;
+                    opacity: 0;
+                    transition: opacity 0.3s ease;
+                }
+
+                .livechat-fullscreen-loader {
+                    position: absolute !important;
+                    top: 50% !important;
+                    left: 50% !important;
+                    transform: translate(-50%, -50%) !important;
+                    text-align: center !important;
+                    z-index: 10 !important;
+                    color: #333 !important;
+                }
+
+                .livechat-fullscreen-spinner {
+                    width: 40px !important;
+                    height: 40px !important;
+                    border: 4px solid #f3f3f3 !important;
+                    border-top: 4px solid #667eea !important;
+                    border-radius: 50% !important;
+                    animation: livechat-fullscreen-spin 1s linear infinite !important;
+                    margin: 0 auto 15px !important;
+                }
+
+                @keyframes livechat-fullscreen-spin {
+                    0% { transform: rotate(0deg); }
+                    100% { transform: rotate(360deg); }
+                }
+
+                .livechat-fullscreen-loader p {
+                    margin: 10px 0 !important;
+                    font-size: 16px !important;
+                    color: #666 !important;
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+                }
+
+                .livechat-fullscreen-error {
+                    text-align: center !important;
+                    color: #e74c3c !important;
+                }
+
+                .livechat-fullscreen-error button {
+                    margin-top: 10px !important;
+                    padding: 8px 16px !important;
+                    background: #e74c3c !important;
+                    color: white !important;
+                    border: none !important;
+                    border-radius: 4px !important;
+                    cursor: pointer !important;
+                }
+            `;
+
+            document.head.appendChild(styles);
         },
-        
-        // Get current configuration (for debugging)
-        getConfig: function() {
-            return { ...this.config };
+
+        /**
+         * Generate URL for fullscreen chat
+         */
+        generateFullscreenChatUrl: function(userInfo) {
+            const baseUrl = this.config.baseUrl;
+            const apiKey = this.config.apiKey;
+            
+            // Build URL with iframe=1 and fullscreen=1 parameters
+            let url = `${baseUrl}/chat?api_key=${encodeURIComponent(apiKey)}&iframe=1&fullscreen=1`;
+            
+            if (userInfo && !userInfo.isAnonymous) {
+                if (userInfo.userId || userInfo.id) {
+                    url += `&external_user_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
+                }
+                if (userInfo.name || userInfo.fullname) {
+                    url += `&external_fullname=${encodeURIComponent(userInfo.name || userInfo.fullname)}`;
+                }
+                if (userInfo.email) {
+                    url += `&external_email=${encodeURIComponent(userInfo.email)}`;
+                }
+                if (userInfo.username) {
+                    url += `&external_username=${encodeURIComponent(userInfo.username)}`;
+                }
+                url += '&user_role=loggedUser';
+            } else {
+                url += '&user_role=anonymous';
+            }
+            
+            console.log('Fullscreen chat URL:', url); // Debug log
+            return url;
         },
-        
-        // Validate if helper is properly configured
-        isReady: function() {
-            return !!(this.config.apiKey && this.config.baseUrl);
+
+        /**
+         * Open chat in popup mode (original behavior)
+         */
+        openPopupChat: function(userInfo) {
+            const baseUrl = this.config.baseUrl;
+            const apiKey = this.config.apiKey;
+            
+            // Build URL with parameters
+            let url = `${baseUrl}/chat?api_key=${encodeURIComponent(apiKey)}`;
+            
+            if (userInfo) {
+                if (userInfo.userId || userInfo.id) {
+                    url += `&external_user_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
+                }
+                if (userInfo.name || userInfo.fullname) {
+                    url += `&external_fullname=${encodeURIComponent(userInfo.name || userInfo.fullname)}`;
+                }
+                if (userInfo.email) {
+                    url += `&external_email=${encodeURIComponent(userInfo.email)}`;
+                }
+                if (userInfo.username) {
+                    url += `&external_username=${encodeURIComponent(userInfo.username)}`;
+                }
+                url += '&user_role=loggedUser';
+            }
+            
+            // Open in new window
+            const width = 400;
+            const height = 600;
+            const left = (screen.width - width) / 2;
+            const top = (screen.height - height) / 2;
+            
+            window.open(
+                url,
+                'LiveChat',
+                `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+            );
+        },
+
+        /**
+         * Open anonymous chat
+         */
+        openAnonymousChat: function() {
+            switch (this.config.mode) {
+                case 'embed':
+                    this.openAnonymousEmbedChat();
+                    break;
+                case 'fullscreen':
+                    this.openFullscreenChat({ isAnonymous: true });
+                    break;
+                case 'widget':
+                    this.openAnonymousWidgetChat();
+                    break;
+                case 'popup':
+                default:
+                    this.openAnonymousPopupChat();
+                    break;
+            }
+        },
+
+        /**
+         * Open anonymous chat in embed mode
+         */
+        openAnonymousEmbedChat: async function() {
+            if (!this.embedInstance) {
+                await this.initEmbed();
+            }
+            
+            this.embedInstance.openAnonymousChat();
+        },
+
+        /**
+         * Open anonymous chat in widget mode
+         */
+        openAnonymousWidgetChat: function() {
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.updateUser({
+                    isLoggedIn: false
+                });
+                window.LiveChatWidget.open();
+            } else {
+                console.error('LiveChat widget not initialized');
+            }
+        },
+
+        /**
+         * Open anonymous chat in popup mode
+         */
+        openAnonymousPopupChat: function() {
+            const baseUrl = this.config.baseUrl;
+            const apiKey = this.config.apiKey;
+            
+            let url = `${baseUrl}/chat?api_key=${encodeURIComponent(apiKey)}&user_role=anonymous`;
+            
+            const width = 400;
+            const height = 600;
+            const left = (screen.width - width) / 2;
+            const top = (screen.height - height) / 2;
+            
+            window.open(
+                url,
+                'LiveChat',
+                `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
+            );
+        },
+
+        /**
+         * Close the chat (works for embed, fullscreen, and widget modes)
+         */
+        closeChat: function() {
+            if (this.config.mode === 'embed' && this.embedInstance) {
+                this.embedInstance.close();
+            } else if (this.config.mode === 'fullscreen') {
+                const container = document.getElementById('livechat-fullscreen-container');
+                if (container) {
+                    container.remove();
+                    if (this.config.onClose) this.config.onClose();
+                }
+            } else if (this.config.mode === 'widget' && window.LiveChatWidget) {
+                window.LiveChatWidget.close();
+            }
+        },
+
+        /**
+         * Update user information
+         */
+        updateUser: function(userInfo) {
+            if (this.config.mode === 'embed' && this.embedInstance) {
+                this.embedInstance.updateUser(userInfo);
+            } else if (this.config.mode === 'widget' && window.LiveChatWidget) {
+                window.LiveChatWidget.updateUser({
+                    isLoggedIn: true,
+                    username: userInfo.username,
+                    fullname: userInfo.name || userInfo.fullname,
+                    systemId: userInfo.userId || userInfo.id
+                });
+            }
+        },
+
+        /**
+         * Set configuration mode
+         */
+        setMode: function(mode) {
+            this.config.mode = mode;
+            
+            // Re-initialize if switching to embed or widget
+            if (mode === 'embed') {
+                this.initEmbed();
+            } else if (mode === 'widget') {
+                this.initWidget();
+            }
+        },
+
+        /**
+         * Load external script
+         */
+        loadScript: function(src) {
+            return new Promise((resolve, reject) => {
+                // Check if script already exists
+                if (document.querySelector(`script[src="${src}"]`)) {
+                    resolve();
+                    return;
+                }
+
+                const script = document.createElement('script');
+                script.src = src;
+                script.onload = resolve;
+                script.onerror = reject;
+                document.head.appendChild(script);
+            });
+        },
+
+        /**
+         * Destroy the helper instance
+         */
+        destroy: function() {
+            if (this.embedInstance) {
+                this.embedInstance.destroy();
+                this.embedInstance = null;
+            }
+            
+            if (window.LiveChatWidget) {
+                window.LiveChatWidget.destroy();
+            }
         }
     };
-    
-    // Make LiveChatHelper globally available
-    window.LiveChatHelper = LiveChatHelper;
-    
-    // Auto-initialization if config is already available
-    if (window.LiveChatConfig) {
-        LiveChatHelper.init(window.LiveChatConfig);
-    }
-    
+
 })();
