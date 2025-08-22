@@ -202,6 +202,13 @@ async function checkSessionStatus() {
                 disableChatInput();
                 showChatClosedMessage();
                 displaySystemMessage('This chat session has been closed by the support team.');
+                
+                // Hide Leave Chat button when session is already closed
+                const closeBtn = document.getElementById('customerCloseBtn');
+                if (closeBtn) {
+                    closeBtn.style.display = 'none';
+                }
+                
                 return false;
             }
             return true;
@@ -516,6 +523,17 @@ function showChatClosedMessage() {
     }
 }
 
+// Function to show and properly initialize the customer close button
+function showCustomerCloseButton() {
+    const closeBtn = document.getElementById('customerCloseBtn');
+    if (closeBtn) {
+        // Reset button state in case it was stuck in "Ending..." state
+        closeBtn.disabled = false;
+        closeBtn.textContent = 'Leave Chat';
+        closeBtn.style.display = 'inline-block';
+    }
+}
+
 function startNewChat() {
     sessionId = null;
     currentSessionId = null;
@@ -647,14 +665,10 @@ function initWebSocket() {
         if (userType === 'agent') {
             setInterval(refreshAdminSessions, 10000);
         } else if (userType === 'customer') {
-            // Show Leave Chat button only when WebSocket connects successfully and there's an active session
-            // This ensures the user is actually connected to the chat before showing the leave option
+            // Show Leave Chat button when WebSocket connects and there's an active session
             const currentSession = getSessionId();
             if (currentSession) {
-                const closeBtn = document.getElementById('customerCloseBtn');
-                if (closeBtn) {
-                    closeBtn.style.display = 'inline-block';
-                }
+                showCustomerCloseButton();
             }
         }
     };
@@ -798,6 +812,12 @@ function handleWebSocketMessage(data) {
             displaySystemMessage(data.message);
             disableChatInput();
             showChatClosedMessage();
+            
+            // Hide Leave Chat button when session is closed by admin
+            const closeBtn = document.getElementById('customerCloseBtn');
+            if (closeBtn) {
+                closeBtn.style.display = 'none';
+            }
             break;
             
         case 'waiting_sessions':
@@ -1570,6 +1590,13 @@ document.addEventListener('DOMContentLoaded', async function() {
             // For customer interface, check session status
             const sessionActive = await checkSessionStatus();
             if (sessionActive) {
+                // Show the Leave Chat button immediately for existing sessions
+                // This prevents the button from being stuck in "Ending..." state on page refresh
+                const currentSession = getSessionId();
+                if (currentSession) {
+                    showCustomerCloseButton();
+                }
+                
                 initWebSocket();
                 
                 // Wait a moment for WebSocket to connect before initializing form
