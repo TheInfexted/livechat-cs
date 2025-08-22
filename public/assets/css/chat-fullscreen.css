@@ -63,14 +63,8 @@ body {
     border-radius: 20px !important;
     font-size: 14px !important;
     font-weight: 500 !important;
-    background: rgba(255, 255, 255, 0.2) !important;
     backdrop-filter: blur(10px) !important;
     color: white !important;
-}
-
-.status-indicator.online {
-    background: rgba(40, 167, 69, 0.3) !important;
-    border: 1px solid rgba(255, 255, 255, 0.3) !important;
 }
 
 .btn-close-chat {
