@@ -29,7 +29,6 @@ class NotificationController extends BaseController
     
     private function getAgentNotifications($lastCheck)
     {
-        // Get new waiting sessions, transfers, etc.
         $notifications = [];
         
         // New sessions waiting
@@ -51,7 +50,6 @@ class NotificationController extends BaseController
     
     private function getCustomerNotifications($sessionId, $lastCheck)
     {
-        // Get new messages, status changes, etc.
         $notifications = [];
         
         if ($sessionId) {

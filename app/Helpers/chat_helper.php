@@ -1,12 +1,8 @@
 <?php
-/**
- * Chat Helper
- * Save this as: app/Helpers/chat_helper.php
- */
 
 if (!function_exists('formatChatDate')) {
     /**
-     * Format date for chat display (WhatsApp style)
+     * Format date for chat display
      * 
      * @param string $timestamp
      * @return string

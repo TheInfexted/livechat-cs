@@ -60,7 +60,7 @@ class Filters extends BaseFilters
             'pagecache',   // Web Page Caching
             'performance', // Performance Metrics
             'toolbar',     // Debug Toolbar
-            'cors'        // Apply CORS headers to all responses
+            'cors'
         ],
     ];
 

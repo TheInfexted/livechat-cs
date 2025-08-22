@@ -55,8 +55,6 @@ class ApiKeyModel extends Model
         return ['valid' => true, 'key_data' => $key];
     }
     
-    // Usage tracking methods removed - no longer using plan limits
-    
     public function isDomainAllowed($allowedDomains, $requestDomain)
     {
         $domains = array_map('trim', explode(',', $allowedDomains));

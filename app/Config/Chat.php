@@ -25,8 +25,8 @@ class Chat extends BaseConfig
     
     // WebSocket settings  
     public string $websocketHost = 'ws.kopisugar.cc';
-    public string $websocketHostFallback = '103.205.208.104';
-    public int $websocketPort = 39146;
+    public string $websocketHostFallback = '103.205.208.104:39147';
+    public int $websocketPort = 39147;
     public int $heartbeatInterval = 30; // seconds
     public int $reconnectAttempts = 5;
 }

@@ -405,7 +405,7 @@ class ChatServer implements MessageComponentInterface
                     $timestampStmt->execute([$autoMessageId]);
                     $timestamp = $timestampStmt->fetchColumn();
                     
-                    // Prepare automated response (but send as 'agent' to display correctly)
+                    // Prepare automated response
                     $autoResponse = [
                         'type' => 'message',
                         'id' => $autoMessageId,
@@ -434,7 +434,7 @@ class ChatServer implements MessageComponentInterface
     
     protected function handleBulkMessage($from, $data)
     {
-        // Send message to multiple sessions (for announcements)
+        // Send message to multiple sessions
         $message = $data['message'];
         $sessionIds = $data['session_ids'];
         $senderType = $data['sender_type'];

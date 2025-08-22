@@ -37,7 +37,7 @@ abstract class BaseController extends Controller
      */
     protected $helpers = ['url', 'form'];
 
-    // Models (Frontend - Customer chat only)
+    // Models 
     protected $chatModel;
     protected $userModel;
     protected $messageModel;

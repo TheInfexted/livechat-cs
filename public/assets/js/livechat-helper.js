@@ -7,11 +7,10 @@
  * and call our API to open chat sessions.
  * 
  * Usage:
- * <script src="https://your-domain.com/assets/js/livechat-helper.js"></script>
+ * <script src="https://livechat.kopisugar.cc/assets/js/livechat-helper.js"></script>
  * <script>
  * LiveChatHelper.init({
- *     apiKey: 'your-api-key',
- *     baseUrl: 'https://your-domain.com' // optional, auto-detected
+ *     apiKey: 'api-key',
  * });
  * 
  * // From any button click:
