@@ -26,6 +26,13 @@
 
         // Reference to embed instance
         embedInstance: null,
+        
+        // Fullscreen chat state
+        fullscreenState: {
+            isMinimized: false,
+            container: null,
+            iframe: null
+        },
 
         /**
          * Initialize the LiveChat Helper
@@ -34,6 +41,9 @@
         init: function(options) {
             // Merge options with default config
             this.config = Object.assign({}, this.config, options);
+            
+            // Initialize message listener for iframe communication
+            this.initMessageListener();
 
             // Initialize embed if in embed mode
             if (this.config.mode === 'embed') {
@@ -44,6 +54,30 @@
             if (this.config.mode === 'widget') {
                 this.initWidget();
             }
+        },
+        
+        /**
+         * Initialize message listener for iframe communication
+         */
+        initMessageListener: function() {
+            // Only add listener once
+            if (this._messageListenerAdded) return;
+            
+            window.addEventListener('message', (event) => {
+                // Security check - ensure message comes from our domain
+                const allowedOrigin = new URL(this.config.baseUrl).origin;
+                if (event.origin !== allowedOrigin) {
+                    return;
+                }
+                
+                // Handle close message from fullscreen chat iframe
+                if (event.data && event.data.type === 'close_fullscreen_chat' && event.data.source === 'livechat_iframe') {
+                    console.log('Received close fullscreen chat message from iframe');
+                    this.closeFullscreenChat();
+                }
+            });
+            
+            this._messageListenerAdded = true;
         },
 
         /**
@@ -88,12 +122,18 @@
          * Initialize the widget system
          */
         initWidget: function() {
+            // Get position from widgetConfig or fallback to direct config
+            const position = (this.config.widgetConfig && this.config.widgetConfig.position) 
+                           || this.config.position 
+                           || 'bottom-right';
+            
             // Set global config for widget
             window.LiveChatConfig = {
                 baseUrl: this.config.baseUrl,
                 apiKey: this.config.apiKey,
                 theme: this.config.theme || 'blue',
-                position: this.config.position || 'bottom-right'
+                position: position,
+                widgetConfig: this.config.widgetConfig || { position: position }
             };
 
             // Load widget script
@@ -163,7 +203,7 @@
         },
 
         /**
-         * Create fullscreen iframe that fills the entire viewport
+         * Create fullscreen iframe (original working version)
          */
         createFullscreenIframe: function(userInfo) {
             // Remove any existing fullscreen iframe
@@ -208,7 +248,7 @@
                 loader.innerHTML = `
                     <div class="livechat-fullscreen-error">
                         <p>Failed to load LiveChat. Please try again.</p>
-                        <button onclick="document.getElementById('livechat-fullscreen-container').remove()">Close</button>
+                        <button onclick="window.LiveChatHelper.closeFullscreenChat()">Close</button>
                     </div>
                 `;
             });
@@ -217,8 +257,6 @@
             const escHandler = (e) => {
                 if (e.key === 'Escape') {
                     container.remove();
-                    document.removeEventListener('keydown', escHandler);
-                    if (this.config.onClose) this.config.onClose();
                 }
             };
             document.addEventListener('keydown', escHandler);
@@ -233,7 +271,7 @@
             // Prevent body scrolling
             document.body.style.overflow = 'hidden';
 
-            // Add close handler when container is removed
+            // Add cleanup handler when container is removed
             const observer = new MutationObserver((mutations) => {
                 mutations.forEach((mutation) => {
                     if (mutation.type === 'childList') {
@@ -252,6 +290,55 @@
             // Call open callback
             if (this.config.onOpen) {
                 this.config.onOpen();
+            }
+        },
+        
+        /**
+         * Minimize fullscreen chat to a small widget
+         */
+        minimizeFullscreenChat: function() {
+            if (!this.fullscreenState.container) return;
+            
+            this.fullscreenState.container.classList.add('minimized');
+            this.fullscreenState.isMinimized = true;
+            document.body.style.overflow = ''; // Restore scrolling
+            
+            // Update minimize button
+            const minimizeBtn = this.fullscreenState.container.querySelector('.livechat-minimize-button');
+            if (minimizeBtn) {
+                minimizeBtn.innerHTML = '□';
+                minimizeBtn.title = 'Maximize Chat';
+                minimizeBtn.onclick = () => this.maximizeFullscreenChat();
+            }
+        },
+        
+        /**
+         * Maximize fullscreen chat from minimized state
+         */
+        maximizeFullscreenChat: function() {
+            if (!this.fullscreenState.container) return;
+            
+            this.fullscreenState.container.classList.remove('minimized');
+            this.fullscreenState.isMinimized = false;
+            document.body.style.overflow = 'hidden'; // Prevent scrolling
+            
+            // Update minimize button
+            const minimizeBtn = this.fullscreenState.container.querySelector('.livechat-minimize-button');
+            if (minimizeBtn) {
+                minimizeBtn.innerHTML = '−';
+                minimizeBtn.title = 'Minimize Chat';
+                minimizeBtn.onclick = () => this.minimizeFullscreenChat();
+            }
+        },
+        
+        /**
+         * Close fullscreen chat completely
+         */
+        closeFullscreenChat: function() {
+            const container = document.getElementById('livechat-fullscreen-container');
+            if (container) {
+                container.remove();
+                if (this.config.onClose) this.config.onClose();
             }
         },
 
@@ -525,6 +612,36 @@
                 this.initEmbed();
             } else if (mode === 'widget') {
                 this.initWidget();
+            }
+        },
+
+        /**
+         * Set widget position (only works in widget mode)
+         */
+        setWidgetPosition: function(position) {
+            if (this.config.mode !== 'widget') {
+                console.warn('setWidgetPosition only works in widget mode');
+                return;
+            }
+            
+            // Update config
+            if (!this.config.widgetConfig) {
+                this.config.widgetConfig = {};
+            }
+            this.config.widgetConfig.position = position;
+            this.config.position = position;
+            
+            // Update global config if it exists
+            if (window.LiveChatConfig) {
+                window.LiveChatConfig.position = position;
+                if (window.LiveChatConfig.widgetConfig) {
+                    window.LiveChatConfig.widgetConfig.position = position;
+                }
+            }
+            
+            // Update widget position if it exists
+            if (window.LiveChatWidget && typeof window.LiveChatWidget.updatePosition === 'function') {
+                window.LiveChatWidget.updatePosition(position);
             }
         },
 

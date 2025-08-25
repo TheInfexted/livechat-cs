@@ -15,9 +15,10 @@
             <span class="status-indicator" id="connectionStatus">Offline</span>
             <button class="btn btn-close-chat" id="customerCloseBtn" onclick="closeCustomerChat()" style="display: none;">Leave Chat</button>
             <?php if (isset($is_fullscreen) && $is_fullscreen): ?>
-            <button class="btn btn-fullscreen-minimize" id="fullscreenMinimizeBtn" onclick="minimizeFullscreen()" title="Minimize">
+            <button class="btn btn-fullscreen-close" id="fullscreenCloseBtn" onclick="closeFullscreen()" title="Close Chat">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <line x1="6" y1="19" x2="18" y2="19"></line>
+                    <line x1="18" y1="6" x2="6" y2="18"></line>
+                    <line x1="6" y1="6" x2="18" y2="18"></line>
                 </svg>
             </button>
             <?php endif; ?>
@@ -348,65 +349,33 @@
         }
     }
     
-    // Function to minimize the fullscreen chat
-    function minimizeFullscreen() {
-        // Try different methods to minimize the chat
-        
-        // Method 1: If in an iframe, communicate with parent to minimize
+    // Function to close the fullscreen chat iframe only
+    function closeFullscreen() {
+        // If we're in an iframe (which we should be for fullscreen chat),
+        // send a message to the parent window to close the iframe
         if (window.parent !== window) {
             try {
                 window.parent.postMessage({
-                    type: 'minimize_chat',
-                    source: 'livechat',
+                    type: 'close_fullscreen_chat',
+                    source: 'livechat_iframe',
                     sessionId: sessionId
                 }, '*');
-                // Give the parent a moment to respond, then fallback
-                setTimeout(fallbackMinimize, 1000);
             } catch (e) {
-                fallbackMinimize();
+                console.error('Failed to send close message to parent:', e);
             }
-        }
-        // Method 2: If opened via window.open(), try to go back
-        else if (window.opener) {
-            try {
-                window.history.back();
-            } catch (e) {
-                fallbackMinimize();
-            }
-        }
-        // Method 3: Standalone window - use fallback methods
-        else {
-            fallbackMinimize();
-        }
-    }
-    
-    // Fallback minimize function
-    function fallbackMinimize() {
-        // First, try to navigate back in history
-        if (window.history.length > 1) {
-            try {
-                window.history.back();
-                return;
-            } catch (e) {
-                // History.back() failed, continue to other methods
-            }
-        }
-        
-        // If history doesn't work, navigate to non-fullscreen version
-        try {
-            // If we have a session, go to the regular chat view
-            if (sessionId && sessionId !== '') {
-                window.location.href = baseUrl + 'chat/customer/' + sessionId;
-            } else {
-                // No session, go to main chat page
-                window.location.href = baseUrl + 'chat';
-            }
-        } catch (e) {
-            // Last resort - try to close the window
+        } else {
+            // If we're not in an iframe, we might be in a popup or standalone window
+            // In this case, we can try to close the window
             try {
                 window.close();
-            } catch (closeError) {
-                alert('Could not minimize the chat. Please use your browser\'s back button or close this tab.');
+            } catch (e) {
+                // If we can't close, try to go back in history
+                try {
+                    window.history.back();
+                } catch (historyError) {
+                    // Last resort - show message
+                    alert('Unable to close the chat. Please use your browser\'s back button or close this tab.');
+                }
             }
         }
     }

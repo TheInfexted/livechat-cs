@@ -85,7 +85,7 @@ body {
     box-shadow: 0 4px 15px rgba(0,0,0,0.2) !important;
 }
 
-.btn-fullscreen-minimize {
+.btn-fullscreen-close {
     background: rgba(255, 255, 255, 0.2) !important;
     border: 1px solid rgba(255, 255, 255, 0.3) !important;
     color: white !important;
@@ -102,20 +102,20 @@ body {
     min-width: 40px !important;
 }
 
-.btn-fullscreen-minimize:hover {
-    background: rgba(255, 193, 7, 0.3) !important;
-    border-color: rgba(255, 193, 7, 0.5) !important;
+.btn-fullscreen-close:hover {
+    background: rgba(231, 76, 60, 0.8) !important;
+    border-color: rgba(231, 76, 60, 0.9) !important;
     color: white !important;
     transform: translateY(-1px) !important;
-    box-shadow: 0 4px 15px rgba(255, 193, 7, 0.2) !important;
+    box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3) !important;
 }
 
-.btn-fullscreen-minimize svg {
+.btn-fullscreen-close svg {
     stroke-width: 2 !important;
     transition: all 0.3s ease !important;
 }
 
-.btn-fullscreen-minimize:hover svg {
+.btn-fullscreen-close:hover svg {
     stroke-width: 3 !important;
 }
 
@@ -498,7 +498,7 @@ body {
 .btn-close-chat:focus,
 .btn-primary:focus,
 .btn-send:focus,
-.btn-fullscreen-minimize:focus {
+.btn-fullscreen-close:focus {
     outline: 2px solid rgba(102, 126, 234, 0.5) !important;
     outline-offset: 2px !important;
 }

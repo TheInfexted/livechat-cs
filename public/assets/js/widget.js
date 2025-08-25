@@ -49,6 +49,34 @@
             left: 20px;
         }
         
+        .live-chat-widget.position-top-right {
+            top: 20px;
+            right: 20px;
+        }
+        
+        .live-chat-widget.position-top-left {
+            top: 20px;
+            left: 20px;
+        }
+        
+        .live-chat-widget.position-center-right {
+            top: 50%;
+            right: 20px;
+            transform: translateY(-50%);
+        }
+        
+        .live-chat-widget.position-center-left {
+            top: 50%;
+            left: 20px;
+            transform: translateY(-50%);
+        }
+        
+        .live-chat-widget.position-bottom-center {
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+        }
+        
         /* Chat Button */
         .live-chat-button {
             width: 60px;
@@ -240,40 +268,120 @@
         
         .live-chat-modal {
             position: fixed;
-            bottom: 90px;
             width: 400px;
             height: 600px;
             background: white;
             border-radius: 12px;
             box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
             z-index: 999998;
-            transform: translateY(20px) scale(0.9);
             opacity: 0;
             visibility: hidden;
             transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
             overflow: hidden;
+            /* Default positioning - will be overridden by position classes */
+            bottom: 90px;
+            right: 20px;
+            transform: translateY(20px) scale(0.9);
         }
         
-        /* Modal positioning - direct classes */
+        /* Modal positioning - direct classes for all positions with !important to override conflicts */
         .live-chat-modal.position-bottom-right {
-            right: 20px;
+            right: 20px !important;
+            bottom: 90px !important;
+            left: auto !important;
+            top: auto !important;
+            transform: translateY(20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-bottom-right.open {
+            transform: translateY(0) scale(1) !important;
         }
         
         .live-chat-modal.position-bottom-left {
-            left: 20px;
+            left: 20px !important;
+            bottom: 90px !important;
+            right: auto !important;
+            top: auto !important;
+            transform: translateY(20px) scale(0.9) !important;
         }
         
-        /* Fallback - legacy widget wrapper selectors */
-        .live-chat-widget.position-bottom-right .live-chat-modal {
-            right: 20px;
+        .live-chat-modal.position-bottom-left.open {
+            transform: translateY(0) scale(1) !important;
         }
         
-        .live-chat-widget.position-bottom-left .live-chat-modal {
-            left: 20px;
+        .live-chat-modal.position-bottom-center {
+            left: 50% !important;
+            bottom: 90px !important;
+            right: auto !important;
+            top: auto !important;
+            transform: translateX(-50%) translateY(20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-bottom-center.open {
+            transform: translateX(-50%) translateY(0) scale(1) !important;
+        }
+        
+        .live-chat-modal.position-top-right {
+            right: 20px !important;
+            top: 90px !important;
+            left: auto !important;
+            bottom: auto !important;
+            transform: translateY(-20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-top-right.open {
+            transform: translateY(0) scale(1) !important;
+        }
+        
+        .live-chat-modal.position-top-left {
+            left: 20px !important;
+            top: 90px !important;
+            right: auto !important;
+            bottom: auto !important;
+            transform: translateY(-20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-top-left.open {
+            transform: translateY(0) scale(1) !important;
+        }
+        
+        .live-chat-modal.position-top-center {
+            left: 50% !important;
+            top: 90px !important;
+            right: auto !important;
+            bottom: auto !important;
+            transform: translateX(-50%) translateY(-20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-top-center.open {
+            transform: translateX(-50%) translateY(0) scale(1) !important;
+        }
+        
+        .live-chat-modal.position-center-right {
+            right: 90px !important;
+            top: 50% !important;
+            left: auto !important;
+            bottom: auto !important;
+            transform: translateY(-50%) translateX(20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-center-right.open {
+            transform: translateY(-50%) translateX(0) scale(1) !important;
+        }
+        
+        .live-chat-modal.position-center-left {
+            left: 90px !important;
+            top: 50% !important;
+            right: auto !important;
+            bottom: auto !important;
+            transform: translateY(-50%) translateX(-20px) scale(0.9) !important;
+        }
+        
+        .live-chat-modal.position-center-left.open {
+            transform: translateY(-50%) translateX(0) scale(1) !important;
         }
         
         .live-chat-modal.open {
-            transform: translateY(0) scale(1);
             opacity: 1;
             visibility: visible;
         }
@@ -671,6 +779,7 @@
             this.elements.overlay.classList.add('open');
             this.elements.button.classList.add('open');
             
+            
             // Hide widget on mobile when modal is open (for browsers that don't support :has())
             if (window.innerWidth <= 768) {
                 this.elements.container.classList.add('modal-open');
@@ -689,9 +798,17 @@
             this.elements.overlay.className = 'live-chat-overlay';
             this.elements.overlay.onclick = () => this.close();
             
-            // Create modal with positioning classes from widget container
+            // Create modal with only the base and position classes
             this.elements.modal = document.createElement('div');
-            this.elements.modal.className = `live-chat-modal ${this.elements.container.className.replace('live-chat-widget', '').trim()}`;
+            // Force clean class assignment - only base modal class and position
+            this.elements.modal.className = '';
+            this.elements.modal.classList.add('live-chat-modal');
+            this.elements.modal.classList.add(`position-${this.config.position}`);
+            
+            // Debug logging
+            console.log('Creating modal with position:', this.config.position);
+            console.log('Modal classes after creation:', this.elements.modal.className);
+            
             this.elements.modal.innerHTML = `
                 <div class="live-chat-modal-header">
                     <h3>${this.config.branding.title}</h3>
@@ -702,6 +819,7 @@
             
             document.body.appendChild(this.elements.overlay);
             document.body.appendChild(this.elements.modal);
+            
             
             this.iframe = this.elements.modal.querySelector('.live-chat-iframe');
         }
@@ -754,6 +872,41 @@
             }
         }
         
+        updatePosition(newPosition) {
+            // Update config
+            this.config.position = newPosition;
+            
+            // Update widget container classes
+            if (this.elements.container) {
+                // Remove all existing position classes
+                const classes = this.elements.container.className.split(' ');
+                const filteredClasses = classes.filter(cls => !cls.startsWith('position-'));
+                
+                // Set new class list with new position
+                this.elements.container.className = filteredClasses.join(' ').trim();
+                this.elements.container.classList.add(`position-${newPosition}`);
+            }
+            
+            // Update modal classes if it exists - force clean class assignment
+            if (this.elements.modal) {
+                console.log('Modal classes before:', this.elements.modal.className);
+                
+                // Clear all classes and add only what we need
+                this.elements.modal.className = '';
+                this.elements.modal.classList.add('live-chat-modal');
+                this.elements.modal.classList.add(`position-${newPosition}`);
+                
+                // If modal is currently open, preserve the open state
+                if (this.isOpen) {
+                    this.elements.modal.classList.add('open');
+                }
+                
+                console.log('Modal classes after:', this.elements.modal.className);
+                
+            }
+        }
+        
+        
         destroy() {
             if (this.elements.container) {
                 this.elements.container.remove();
@@ -788,17 +941,31 @@
     
     // Wait for both DOM and config to be ready
     function waitForInit() {
+        // Check if widget is already initialized to prevent double initialization
+        if (window.LiveChatWidget) {
+            return;
+        }
+        
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
                 // Add small delay to ensure config is fully set
-                setTimeout(initWidget, 150);
+                setTimeout(() => {
+                    if (!window.LiveChatWidget) { // Double check
+                        initWidget();
+                    }
+                }, 150);
             });
         } else {
             // DOM is already ready, just wait a bit for config
-            setTimeout(initWidget, 150);
+            setTimeout(() => {
+                if (!window.LiveChatWidget) { // Double check
+                    initWidget();
+                }
+            }, 150);
         }
     }
     
+    // Only initialize if not already done
     waitForInit();
     
 })();
