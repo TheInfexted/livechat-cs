@@ -137,7 +137,7 @@
             };
 
             // Load widget script
-            this.loadScript(`${this.config.baseUrl}/assets/js/widget.js`);
+            this.loadScript(`${this.config.baseUrl}/assets/js/widget.js?v=${Date.now()}`);
         },
 
         /**
