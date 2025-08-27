@@ -48,6 +48,7 @@ class ChatController extends General
             'session_id' => $validSession,
             'is_iframe' => $isIframe,
             'is_fullscreen' => $isFullscreen,
+            'api_key' => $apiKey,
             'external_username' => $externalUsername,
             'external_fullname' => $externalFullname,
             'external_system_id' => $externalSystemId,
@@ -70,6 +71,10 @@ class ChatController extends General
         $externalUsername = $this->sanitizeInput($this->request->getPost('external_username'));
         $externalFullname = $this->sanitizeInput($this->request->getPost('external_fullname'));
         $externalSystemId = $this->sanitizeInput($this->request->getPost('external_system_id'));
+        
+        // API key for iframe integrations (can come from POST or session)
+        $apiKey = $this->sanitizeInput($this->request->getPost('api_key')) ?: 
+                 $this->sanitizeInput($this->request->getGet('api_key'));
         
         // Validate role exists
         if (!$this->userRoleModel->getRoleByName($userRole)) {
@@ -130,6 +135,7 @@ class ChatController extends General
             'external_username' => $externalUsername,
             'external_fullname' => $externalFullname,
             'external_system_id' => $externalSystemId,
+            'api_key' => $apiKey,
             'status' => 'waiting'
         ];
         

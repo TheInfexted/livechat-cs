@@ -49,8 +49,6 @@
             this.elements = {};
             this.welcomeBubbleShown = false;
             
-            console.log('Widget initialized with position:', this.config.position);
-            
             this.init();
         }
         
@@ -703,8 +701,6 @@
             this.elements.modal.className = 'live-chat-modal';
             this.elements.modal.id = 'live-chat-modal-' + Date.now(); // Add unique ID for debugging
             
-            console.log('Creating modal with position:', this.config.position);
-            
             this.elements.modal.innerHTML = `
                 <div class="live-chat-modal-header">
                     <h3>${this.config.branding.title}</h3>
@@ -720,19 +716,7 @@
             
             // Apply position immediately after adding to DOM
             this.applyModalPosition(this.config.position);
-            
-            // Debug: Check what styles are actually applied
-            setTimeout(() => {
-                const computedStyle = window.getComputedStyle(this.elements.modal);
-                console.log('Modal computed position after creation:', {
-                    position: computedStyle.position,
-                    top: computedStyle.top,
-                    bottom: computedStyle.bottom,
-                    left: computedStyle.left,
-                    right: computedStyle.right,
-                    transform: computedStyle.transform
-                });
-            }, 100);
+        
         }
         
         applyModalPosition(position) {
@@ -795,12 +779,6 @@
             
             // Force the styles to apply
             this.elements.modal.style.setProperty('position', 'fixed', 'important');
-            
-            console.log('Applied modal position:', position, 'Modal element:', this.elements.modal);
-            console.log('Computed styles:', window.getComputedStyle(this.elements.modal).top, 
-                        window.getComputedStyle(this.elements.modal).bottom,
-                        window.getComputedStyle(this.elements.modal).left,
-                        window.getComputedStyle(this.elements.modal).right);
         }
         
         close() {
@@ -844,7 +822,6 @@
         }
         
         updatePosition(newPosition) {
-            console.log('UpdatePosition called with:', newPosition);
             this.config.position = newPosition;
             
             // Update widget container position
@@ -881,58 +858,9 @@
                     }, 100);
                 }
             }
-            
-            console.log('Position updated to:', newPosition);
         }
         
-        // Add this method to expose widget for debugging
-        debugModalPosition() {
-            if (!this.elements.modal) {
-                console.log('No modal exists yet');
-                return;
-            }
-            
-            const modal = this.elements.modal;
-            const computedStyle = window.getComputedStyle(modal);
-            
-            console.log('=== MODAL POSITION DEBUG ===');
-            console.log('Config position:', this.config.position);
-            console.log('Modal element:', modal);
-            console.log('Inline styles:', {
-                position: modal.style.position,
-                top: modal.style.top,
-                bottom: modal.style.bottom,
-                left: modal.style.left,
-                right: modal.style.right,
-                transform: modal.style.transform
-            });
-            console.log('Computed styles:', {
-                position: computedStyle.position,
-                top: computedStyle.top,
-                bottom: computedStyle.bottom,
-                left: computedStyle.left,
-                right: computedStyle.right,
-                transform: computedStyle.transform
-            });
-            console.log('Modal classes:', modal.className);
-            console.log('Modal ID:', modal.id);
-            
-            // Check if any stylesheets are overriding
-            const sheets = document.styleSheets;
-            for (let i = 0; i < sheets.length; i++) {
-                try {
-                    const rules = sheets[i].cssRules || sheets[i].rules;
-                    for (let j = 0; j < rules.length; j++) {
-                        const rule = rules[j];
-                        if (rule.selectorText && modal.matches(rule.selectorText)) {
-                            console.log('Matching CSS rule:', rule.selectorText, rule.style.cssText);
-                        }
-                    }
-                } catch (e) {
-                    // Cross-origin stylesheets will throw an error
-                }
-            }
-        }
+        
         
         destroy() {
             if (this.elements.container) {
@@ -968,8 +896,6 @@
             config.position = config.widgetConfig.position;
         }
         
-        console.log('Initializing widget with config:', config);
-        
         window.LiveChatWidget = new LiveChatWidget(config);
     }
     
@@ -995,15 +921,6 @@
             }, 150);
         }
     }
-    
-    // Add global debug function
-    window.debugLiveChatPosition = function() {
-        if (window.LiveChatWidget && window.LiveChatWidget.debugModalPosition) {
-            window.LiveChatWidget.debugModalPosition();
-        } else {
-            console.log('LiveChatWidget not initialized or debug method not available');
-        }
-    };
     
     waitForInit();
     

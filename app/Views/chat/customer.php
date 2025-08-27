@@ -35,6 +35,7 @@
                         <input type="hidden" name="external_username" value="<?= $external_username ?? '' ?>">
                         <input type="hidden" name="external_fullname" value="<?= $external_fullname ?? '' ?>">
                         <input type="hidden" name="external_system_id" value="<?= $external_system_id ?? '' ?>">
+                        <input type="hidden" name="api_key" value="<?= $api_key ?? '' ?>">
                         
                         <?php if ($user_role === 'loggedUser' && ($external_fullname || $external_username)): ?>
                             <!-- For logged users, show the name as read-only -->
@@ -112,6 +113,7 @@
     let externalUsername = '<?= $external_username ?? '' ?>';
     let externalFullname = '<?= $external_fullname ?? '' ?>';
     let externalSystemId = '<?= $external_system_id ?? '' ?>';
+    let apiKey = '<?= $api_key ?? '' ?>';
     let isIframe = <?= $is_iframe ? 'true' : 'false' ?>;
     
     // Load quick actions when page loads
@@ -324,6 +326,7 @@
                 <input type="hidden" name="external_username" value="${externalUsername}">
                 <input type="hidden" name="external_fullname" value="${externalFullname}">
                 <input type="hidden" name="external_system_id" value="${externalSystemId}">
+                <input type="hidden" name="api_key" value="${apiKey}">
             `;
             
             chatInterface.innerHTML = `

@@ -410,7 +410,8 @@ async function loadChatHistoryForSession(sessionId) {
     if (!sessionId) return;
     
     try {
-        const response = await fetch(`/chat/messages/${sessionId}`);
+        // Use backend=1 parameter for admin to filter out system messages
+        const response = await fetch(`/chat/messages/${sessionId}?backend=1`);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');
@@ -1412,7 +1413,8 @@ async function refreshMessagesForSession(sessionId) {
     }
     
     try {
-        const response = await fetch(`/chat/messages/${sessionId}`);
+        // Use backend=1 parameter for admin to filter out system messages
+        const response = await fetch(`/chat/messages/${sessionId}?backend=1`);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');
