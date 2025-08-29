@@ -120,6 +120,8 @@
     document.addEventListener('DOMContentLoaded', function() {
         if (sessionId) {
             fetchQuickActions();
+            // Initialize typing functionality for existing sessions
+            initializeTypingForCustomer();
         }
     });
 
@@ -355,6 +357,99 @@
                     </form>
                 </div>
             `;
+        }
+    }
+    
+    // Override the handleWebSocketMessage function to include our typing indicator logic
+    if (typeof handleWebSocketMessage !== 'undefined') {
+        const originalHandleWebSocketMessage = handleWebSocketMessage;
+        
+        window.handleWebSocketMessage = function(data) {
+            // Call the original handler
+            originalHandleWebSocketMessage(data);
+            
+            // Handle typing indicator specifically for customer interface
+            if (data.type === 'typing') {
+                const indicator = document.getElementById('typingIndicator');
+                if (indicator && data.session_id === sessionId) {
+                    // Show typing indicator only if agent is typing and it's not the customer
+                    if (data.is_typing && data.user_type !== 'customer') {
+                        indicator.style.display = 'flex';
+                    } else {
+                        indicator.style.display = 'none';
+                    }
+                }
+            }
+        };
+    }
+    
+    // Add typing event listeners to message input (integrate with chat.js)
+    function initializeTypingForCustomer() {
+        const messageInput = document.getElementById('messageInput');
+        if (messageInput) {
+            // Use the chat.js typing functionality if available
+            if (typeof sendTypingIndicator === 'function') {
+                messageInput.addEventListener('input', function() {
+                    if (typeof isTyping === 'undefined' || !isTyping) {
+                        sendTypingIndicator(true);
+                    }
+                    
+                    if (typeof typingTimer !== 'undefined') {
+                        clearTimeout(typingTimer);
+                    }
+                    
+                    typingTimer = setTimeout(() => {
+                        sendTypingIndicator(false);
+                    }, 1000);
+                });
+                
+                messageInput.addEventListener('blur', function() {
+                    if (typeof isTyping !== 'undefined' && isTyping) {
+                        sendTypingIndicator(false);
+                    }
+                });
+            } else {
+                // Fallback if chat.js typing functions are not available
+                let localIsTyping = false;
+                let localTypingTimer = null;
+                
+                messageInput.addEventListener('input', function() {
+                    if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
+                        if (!localIsTyping) {
+                            localIsTyping = true;
+                            ws.send(JSON.stringify({
+                                type: 'typing',
+                                session_id: sessionId,
+                                user_type: 'customer',
+                                is_typing: true
+                            }));
+                        }
+                        
+                        clearTimeout(localTypingTimer);
+                        localTypingTimer = setTimeout(() => {
+                            localIsTyping = false;
+                            ws.send(JSON.stringify({
+                                type: 'typing',
+                                session_id: sessionId,
+                                user_type: 'customer',
+                                is_typing: false
+                            }));
+                        }, 1000);
+                    }
+                });
+                
+                messageInput.addEventListener('blur', function() {
+                    if (ws && ws.readyState === WebSocket.OPEN && sessionId && localIsTyping) {
+                        localIsTyping = false;
+                        ws.send(JSON.stringify({
+                            type: 'typing',
+                            session_id: sessionId,
+                            user_type: 'customer',
+                            is_typing: false
+                        }));
+                    }
+                });
+            }
         }
     }
     
