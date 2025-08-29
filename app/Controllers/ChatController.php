@@ -76,6 +76,33 @@ class ChatController extends General
         $apiKey = $this->sanitizeInput($this->request->getPost('api_key')) ?: 
                  $this->sanitizeInput($this->request->getGet('api_key'));
         
+        // Validate API key and get client_id if provided
+        $clientId = null;
+        if ($apiKey) {
+            $apiKeyModel = new \App\Models\ApiKeyModel();
+            $domain = $this->request->getServer('HTTP_REFERER') ? parse_url($this->request->getServer('HTTP_REFERER'), PHP_URL_HOST) : null;
+            $validation = $apiKeyModel->validateApiKey($apiKey, $domain);
+            
+            if (!$validation['valid']) {
+                return $this->jsonResponse(['error' => $validation['error']], 400);
+            }
+            
+            // Get client_id directly from the API key data
+            $keyData = $validation['key_data'];
+            
+            // Debug logging to track client_id
+            error_log('DEBUG - API Key validation successful');
+            error_log('DEBUG - Key data: ' . print_r($keyData, true));
+            
+            // The API key model should already have the client_id from the validation
+            if (isset($keyData['client_id']) && $keyData['client_id']) {
+                $clientId = (int)$keyData['client_id'];
+                error_log('DEBUG - Client ID extracted from key data: ' . $clientId);
+            } else {
+                error_log('DEBUG - No client_id found in key data or client_id is empty');
+            }
+        }
+        
         // Validate role exists
         if (!$this->userRoleModel->getRoleByName($userRole)) {
             return $this->jsonResponse(['error' => 'Invalid user role specified'], 400);
@@ -136,10 +163,28 @@ class ChatController extends General
             'external_fullname' => $externalFullname,
             'external_system_id' => $externalSystemId,
             'api_key' => $apiKey,
+            'client_id' => $clientId,
             'status' => 'waiting'
         ];
         
+        // Debug logging for database insertion
+        error_log('DEBUG - About to insert chat session with data: ' . print_r($data, true));
+        error_log('DEBUG - Client ID specifically: ' . var_export($clientId, true));
+        
         $chatId = $this->chatModel->insert($data);
+        
+        // Debug logging after insertion
+        if ($chatId) {
+            error_log('DEBUG - Chat session inserted successfully with ID: ' . $chatId);
+            
+            // Verify what was actually inserted
+            $insertedData = $this->chatModel->find($chatId);
+            if ($insertedData) {
+                error_log('DEBUG - Inserted data verification - client_id: ' . var_export($insertedData['client_id'], true));
+            }
+        } else {
+            error_log('DEBUG - Failed to insert chat session');
+        }
         
         if ($chatId) {
             $this->session->set('chat_session_id', $sessionId);
@@ -347,29 +392,61 @@ class ChatController extends General
     // Get active keyword responses for quick actions
     public function getQuickActions()
     {
-        try {
-            // Get all active keyword responses from database using initialized model
-            $keywordResponses = $this->keywordResponseModel->getActiveResponses();
-            
-            // Transform the data to match the expected format for frontend
-            $quickActions = [];
-            foreach ($keywordResponses as $response) {
-                $quickActions[] = [
-                    'keyword' => $response['keyword'],
-                    'display_name' => $response['keyword'], // Using keyword as display name
-                    'response' => $response['response']
-                ];
-            }
-            
-        } catch (\Exception $e) {
-            // Fallback to empty array if database query fails
-            $quickActions = [];
-        }
-
         // Set CORS headers if needed for cross-origin requests
         header('Access-Control-Allow-Origin: *');
         header('Access-Control-Allow-Methods: GET');
         header('Access-Control-Allow-Headers: Content-Type');
+        
+        try {
+            // Get API key from query parameter or header
+            $apiKey = $this->request->getGet('api_key') ?: $this->request->getHeaderLine('X-API-Key');
+            
+            // Debug logging
+            error_log('DEBUG - getQuickActions called with API key: ' . ($apiKey ? 'present' : 'not present'));
+            
+            $quickActions = [];
+            
+            if ($apiKey) {
+                // Use ApiKeyModel to validate the API key and get client_id
+                $apiKeyModel = new \App\Models\ApiKeyModel();
+                $validation = $apiKeyModel->validateApiKey($apiKey);
+                
+                error_log('DEBUG - API key validation result: ' . ($validation['valid'] ? 'valid' : 'invalid'));
+                
+                if ($validation['valid']) {
+                    $keyData = $validation['key_data'];
+                    $clientId = $keyData['client_id'];
+                    
+                    error_log('DEBUG - Client ID from API key: ' . $clientId);
+                    
+                    // Get keyword responses for this specific client
+                    $keywordResponses = $this->keywordResponseModel->getActiveResponsesForClient($clientId);
+                    
+                    error_log('DEBUG - Found ' . count($keywordResponses) . ' keyword responses for client ' . $clientId);
+                    
+                    // Transform the data to match the expected format for frontend
+                    foreach ($keywordResponses as $response) {
+                        $quickActions[] = [
+                            'keyword' => $response['keyword'],
+                            'display_name' => $response['keyword'], // Using keyword as display name
+                            'response' => $response['response']
+                        ];
+                    }
+                } else {
+                    error_log('DEBUG - API key validation failed: ' . ($validation['error'] ?? 'unknown error'));
+                }
+            } else {
+                error_log('DEBUG - No API key provided');
+            }
+            
+            error_log('DEBUG - Returning ' . count($quickActions) . ' quick actions');
+            
+        } catch (\Exception $e) {
+            // Log the exception for debugging
+            error_log('DEBUG - Exception in getQuickActions: ' . $e->getMessage());
+            error_log('DEBUG - Exception trace: ' . $e->getTraceAsString());
+            $quickActions = [];
+        }
 
         return $this->jsonResponse($quickActions);
     }
@@ -616,5 +693,56 @@ class ChatController extends General
         
         // Future enhancement: Send WebSocket message to close session for all connected clients
         // For now, admins will see the session as closed when they refresh or check status
+    }
+    
+    /**
+     * Helper method to get client ID from backend API
+     */
+    private function getClientIdFromBackend($clientEmail)
+    {
+        try {
+            // Backend API endpoint URL
+            $backendUrl = 'https://kiosk-chat.kopisugar.cc/api/client/get-id-by-email';
+            
+            $postData = [
+                'email' => $clientEmail
+            ];
+            
+            // Initialize cURL
+            $ch = curl_init();
+            curl_setopt($ch, CURLOPT_URL, $backendUrl);
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($postData));
+            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            curl_setopt($ch, CURLOPT_TIMEOUT, 10);
+            curl_setopt($ch, CURLOPT_HTTPHEADER, [
+                'Content-Type: application/x-www-form-urlencoded'
+            ]);
+            
+            $response = curl_exec($ch);
+            $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+            
+            if (curl_errno($ch)) {
+                curl_close($ch);
+                error_log('Client ID lookup failed: cURL error - ' . curl_error($ch));
+                return null;
+            }
+            
+            curl_close($ch);
+            
+            if ($httpCode === 200) {
+                $responseData = json_decode($response, true);
+                if ($responseData && $responseData['success'] && isset($responseData['client_id'])) {
+                    return $responseData['client_id'];
+                }
+            }
+            
+            error_log("Client ID lookup failed: HTTP {$httpCode}, Response: {$response}");
+            return null;
+            
+        } catch (Exception $e) {
+            error_log('Client ID lookup exception: ' . $e->getMessage());
+            return null;
+        }
     }
 }

@@ -271,7 +271,12 @@ async function loadChatHistory() {
 }
 
 async function acceptChat(sessionId) {
+    console.log('acceptChat function called with sessionId:', sessionId);
+    console.log('Current user type:', getUserType());
+    console.log('Current user ID:', getUserId());
+    
     try {
+        console.log('Making HTTP request to assign agent...');
         // First, assign the agent via HTTP
         const response = await fetch('/chat/assign-agent', {
             method: 'POST',
@@ -410,8 +415,9 @@ async function loadChatHistoryForSession(sessionId) {
     if (!sessionId) return;
     
     try {
-        // Use backend=1 parameter for admin to filter out system messages
-        const response = await fetch(`/chat/messages/${sessionId}?backend=1`);
+        // Use backend=1 parameter only for admin/agent users to filter out system messages
+        const backendParam = getUserType() === 'agent' ? '?backend=1' : '';
+        const response = await fetch(`/chat/messages/${sessionId}${backendParam}`);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');
@@ -551,6 +557,7 @@ function startNewChat() {
         const currentExternalUsername = typeof externalUsername !== 'undefined' ? externalUsername : '';
         const currentExternalFullname = typeof externalFullname !== 'undefined' ? externalFullname : '';
         const currentExternalSystemId = typeof externalSystemId !== 'undefined' ? externalSystemId : '';
+        const currentApiKey = typeof apiKey !== 'undefined' ? apiKey : '';
         
         // Generate form HTML based on user role
         let nameFieldHtml = '';
@@ -588,6 +595,7 @@ function startNewChat() {
             <input type="hidden" name="external_username" value="${currentExternalUsername}">
             <input type="hidden" name="external_fullname" value="${currentExternalFullname}">
             <input type="hidden" name="external_system_id" value="${currentExternalSystemId}">
+            <input type="hidden" name="api_key" value="${currentApiKey}">
         `;
         
         chatInterface.innerHTML = `
@@ -647,6 +655,8 @@ function initWebSocket() {
                     user_type: currentUserType,
                     user_id: currentUserId
                 };
+                
+                
                 ws.send(JSON.stringify(registerData));
             }
         }, 100);
@@ -806,7 +816,23 @@ function handleWebSocketMessage(data) {
             break;
             
         case 'agent_assigned':
-            displaySystemMessage(data.message);
+            // Only show "An agent has joined the chat" for the correct session
+            const currentUserType = getUserType();
+            const currentUserSession = getSessionId();
+            
+            // For customers, check if this assignment is for their session
+            if (currentUserType === 'customer' && currentUserSession && data.session_id === currentUserSession) {
+                displaySystemMessage(data.message);
+                playNotificationSound();
+                
+                // Update the "Connecting to support..." message if it exists
+                updateConnectingMessage('An agent has joined the chat');
+            }
+            // For agents, show the message if they're viewing the correct session
+            else if (currentUserType === 'agent' && currentSessionId && data.session_id === currentSessionId) {
+                displaySystemMessage(data.message);
+                playNotificationSound();
+            }
             break;
             
         case 'session_closed':
@@ -819,6 +845,10 @@ function handleWebSocketMessage(data) {
             if (closeBtn) {
                 closeBtn.style.display = 'none';
             }
+            
+            // Clear session variables so new chat can be started
+            sessionId = null;
+            currentSessionId = null;
             break;
             
         case 'waiting_sessions':
@@ -859,56 +889,72 @@ document.addEventListener('submit', async function(e) {
             
             const result = await response.json();
             
-            if (result.success) {
-                sessionId = result.session_id;
-                currentSessionId = result.session_id;
-                
-                // Store customer name for immediate message display
-                const formData = new FormData(e.target);
-                const customerName = formData.get('customer_name') || formData.get('external_fullname') || formData.get('external_username') || 'Anonymous';
-                window.currentCustomerName = customerName;
-                
-                const chatInterface = document.getElementById('chatInterface');
-                if (chatInterface) {
-                    const currentDate = new Date();
-                    const currentDateString = currentDate.toDateString();
-                    const formattedDate = formatChatDate(currentDate.toISOString());
+                if (result.success) {
+                    sessionId = result.session_id;
+                    currentSessionId = result.session_id;
                     
-                    chatInterface.innerHTML = `
-                        <div class="chat-window" data-session-id="${result.session_id}">
-                            <div class="messages-container" id="messagesContainer">
-                                <div class="date-separator ${getDateType(formattedDate)}" data-separator-id="date_${currentDateString.replace(/[^a-zA-Z0-9]/g, '_')}">
-                                    <div class="date-badge">${formattedDate}</div>
-                                </div>
-                                <div class="message system" data-message-date="${currentDateString}" data-message-id="system_${Date.now()}">
-                                    <p>Connecting to support...</p>
-                                </div>
-                            </div>
-                            
-                            <div class="typing-indicator" id="typingIndicator" style="display: none;">
-                                <span></span>
-                                <span></span>
-                                <span></span>
-                            </div>
-                            
-                            <!-- Quick Action Toolbar -->
-                            <div class="quick-actions-toolbar" id="quickActionsToolbar">
-                                <div class="quick-actions-buttons" id="quickActionsButtons">
-                                    <!-- Quick action buttons will be loaded here -->
-                                </div>
-                            </div>
-                            
-                            <div class="chat-input-area">
-                                <form id="messageForm">
-                                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-                                    <button type="submit" class="btn btn-send">Send</button>
-                                </form>
-                            </div>
-                        </div>
-                    `;
+                    // Store customer name for immediate message display
+                    const formData = new FormData(e.target);
+                    const customerName = formData.get('customer_name') || formData.get('external_fullname') || formData.get('external_username') || 'Anonymous';
+                    window.currentCustomerName = customerName;
                     
-                    initWebSocket();
-                    initializeMessageForm();
+                    const chatInterface = document.getElementById('chatInterface');
+                    if (chatInterface) {
+                        const currentDate = new Date();
+                        const currentDateString = currentDate.toDateString();
+                        const formattedDate = formatChatDate(currentDate.toISOString());
+                        
+                        chatInterface.innerHTML = `
+                            <div class="chat-window" data-session-id="${result.session_id}">
+                                <div class="messages-container" id="messagesContainer">
+                                    <div class="date-separator ${getDateType(formattedDate)}" data-separator-id="date_${currentDateString.replace(/[^a-zA-Z0-9]/g, '_')}">
+                                        <div class="date-badge">${formattedDate}</div>
+                                    </div>
+                                    <div class="message system" data-message-date="${currentDateString}" data-message-id="system_${Date.now()}">
+                                        <p>Connecting to support...</p>
+                                    </div>
+                                </div>
+                                
+                                <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                                    <span></span>
+                                    <span></span>
+                                    <span></span>
+                                </div>
+                                
+                                <!-- Quick Action Toolbar -->
+                                <div class="quick-actions-toolbar" id="quickActionsToolbar">
+                                    <div class="quick-actions-buttons" id="quickActionsButtons">
+                                        <!-- Quick action buttons will be loaded here -->
+                                    </div>
+                                </div>
+                                
+                                <div class="chat-input-area">
+                                    <form id="messageForm">
+                                        <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                                        <button type="submit" class="btn btn-send">Send</button>
+                                    </form>
+                                </div>
+                            </div>
+                        `;
+                        
+                        // Re-initialize WebSocket connection with the new session ID
+                        initWebSocket();
+                        initializeMessageForm();
+                        
+                        // IMPORTANT: Re-register with WebSocket using the new session ID
+                        // Wait a moment for WebSocket to connect, then register with session
+                        setTimeout(() => {
+                            if (ws && ws.readyState === WebSocket.OPEN) {
+                                console.log('Re-registering customer with session ID:', result.session_id);
+                                const registerData = {
+                                    type: 'register',
+                                    session_id: result.session_id,
+                                    user_type: 'customer',
+                                    user_id: null
+                                };
+                                ws.send(JSON.stringify(registerData));
+                            }
+                        }, 1000);
                     
                     // Note: Leave Chat button will be shown when WebSocket connects successfully
                     // This ensures the user is actually connected before showing the leave option
@@ -1413,8 +1459,9 @@ async function refreshMessagesForSession(sessionId) {
     }
     
     try {
-        // Use backend=1 parameter for admin to filter out system messages
-        const response = await fetch(`/chat/messages/${sessionId}?backend=1`);
+        // Use backend=1 parameter only for admin/agent users to filter out system messages
+        const backendParam = getUserType() === 'agent' ? '?backend=1' : '';
+        const response = await fetch(`/chat/messages/${sessionId}${backendParam}`);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');

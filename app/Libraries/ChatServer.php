@@ -115,6 +115,10 @@ class ChatServer implements MessageComponentInterface
             'user_id' => $data['user_id'] ?? null
         ];
         
+        // Debug: Log connection registration
+        echo "Registered connection {$conn->resourceId} as {$userType} for session {$sessionId}\n";
+        echo "Total connections for session {$sessionId}: " . count($this->sessions[$sessionId]) . "\n";
+        
         // Send connection success
         $conn->send(json_encode([
             'type' => 'connected',
@@ -148,12 +152,28 @@ class ChatServer implements MessageComponentInterface
             return;
         }
         
+        // Determine sender_user_type based on user_type parameter
+        $senderUserType = null;
+        if ($senderType === 'agent' && isset($data['user_type'])) {
+            switch ($data['user_type']) {
+                case 'client':
+                    $senderUserType = 'client';
+                    break;
+                case 'agent':
+                    $senderUserType = 'agent';
+                    break;
+                default:
+                    $senderUserType = 'admin';
+                    break;
+            }
+        }
+        
         // Save message to database
         $stmt = $this->pdo->prepare("
-            INSERT INTO messages (session_id, sender_type, sender_id, message, created_at) 
-            VALUES (?, ?, ?, ?, NOW())
+            INSERT INTO messages (session_id, sender_type, sender_id, sender_user_type, message, created_at) 
+            VALUES (?, ?, ?, ?, ?, NOW())
         ");
-        $result = $stmt->execute([$chatSession['id'], $senderType, $senderId, $message]);
+        $result = $stmt->execute([$chatSession['id'], $senderType, $senderId, $senderUserType, $message]);
         
         if (!$result) {
             return;
@@ -168,6 +188,79 @@ class ChatServer implements MessageComponentInterface
         $stmt->execute([$messageId]);
         $timestamp = $stmt->fetchColumn();
         
+        // Get sender name based on sender type and ID
+        $senderName = null;
+        if ($senderType === 'customer') {
+            $senderName = $chatSession['customer_name'] ?: 'Customer';
+        } elseif ($senderType === 'agent' && $senderId) {
+            // Get user_type from the message data to determine which table to check
+            $userType = $data['user_type'] ?? null;
+            
+            // Fix: When user_type is 'client', check clients table first
+            // When user_type is 'agent', check agents table first
+            
+            if ($userType === 'client') {
+                // For client users, check clients table first
+                $stmt = $this->pdo->prepare("SELECT username FROM clients WHERE id = ?");
+                $stmt->execute([$senderId]);
+                $senderName = $stmt->fetchColumn();
+                
+                if (!$senderName) {
+                    // Fallback: try agents table
+                    $stmt = $this->pdo->prepare("SELECT username FROM agents WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+                
+                if (!$senderName) {
+                    // Final fallback: try users table (admin)
+                    $stmt = $this->pdo->prepare("SELECT username FROM users WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+            } elseif ($userType === 'agent') {
+                // Direct agent user, check agents table first
+                $stmt = $this->pdo->prepare("SELECT username FROM agents WHERE id = ?");
+                $stmt->execute([$senderId]);
+                $senderName = $stmt->fetchColumn();
+                
+                if (!$senderName) {
+                    // Fallback: try clients table
+                    $stmt = $this->pdo->prepare("SELECT username FROM clients WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+                
+                if (!$senderName) {
+                    // Fallback: try users table (admin)
+                    $stmt = $this->pdo->prepare("SELECT username FROM users WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+            } else {
+                // Default: admin users, check users table first
+                $stmt = $this->pdo->prepare("SELECT username FROM users WHERE id = ?");
+                $stmt->execute([$senderId]);
+                $senderName = $stmt->fetchColumn();
+                
+                if (!$senderName) {
+                    // Fallback: try agents table
+                    $stmt = $this->pdo->prepare("SELECT username FROM agents WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+                
+                if (!$senderName) {
+                    // Fallback: try clients table
+                    $stmt = $this->pdo->prepare("SELECT username FROM clients WHERE id = ?");
+                    $stmt->execute([$senderId]);
+                    $senderName = $stmt->fetchColumn();
+                }
+            }
+            
+            $senderName = $senderName ?: 'Agent';
+        }
+        
         // Prepare response
         $response = [
             'type' => 'message',
@@ -176,7 +269,7 @@ class ChatServer implements MessageComponentInterface
             'sender_type' => $senderType,
             'message' => $message,
             'timestamp' => $timestamp,
-            'sender_name' => $senderType === 'customer' ? $chatSession['customer_name'] : null
+            'sender_name' => $senderName
         ];
         
         // Send to all connections in this session
@@ -186,8 +279,8 @@ class ChatServer implements MessageComponentInterface
             }
         }
         
-        // Check for automated keyword responses (only for customer messages and when no agent is assigned)
-        if ($senderType === 'customer' && ($chatSession['status'] === 'waiting' || $chatSession['agent_id'] === null)) {
+        // Check for automated keyword responses (only for customer messages when no agent is assigned)
+        if ($senderType === 'customer' && $chatSession['status'] === 'waiting' && $chatSession['agent_id'] === null) {
             $this->checkAndSendAutomatedReply($sessionId, $message, $chatSession);
         }
         
@@ -238,11 +331,83 @@ class ChatServer implements MessageComponentInterface
         ");
         $stmt->execute([$agentId, $sessionId]);
         
-        // Notify all connections in session
+        // Get the session data to get agent name
+        $stmt = $this->pdo->prepare("SELECT * FROM chat_sessions WHERE session_id = ?");
+        $stmt->execute([$sessionId]);
+        $chatSession = $stmt->fetch();
+        
+        if (!$chatSession) {
+            return;
+        }
+        
+        // Get agent name from appropriate table based on agent_id
+        $agentName = 'Agent';
+        
+        // Try different user tables to find the agent name
+        $userTables = ['users', 'agents', 'clients'];
+        foreach ($userTables as $table) {
+            $stmt = $this->pdo->prepare("SELECT username FROM {$table} WHERE id = ?");
+            $stmt->execute([$agentId]);
+            $name = $stmt->fetchColumn();
+            if ($name) {
+                $agentName = $name;
+                break;
+            }
+        }
+        
+        // Insert the system message into database
+        $systemMessage = $agentName . ' has joined the chat';
+        $stmt = $this->pdo->prepare("
+            INSERT INTO messages (session_id, sender_type, sender_id, message, message_type, created_at) 
+            VALUES (?, 'system', NULL, ?, 'system', NOW())
+        ");
+        $result = $stmt->execute([$chatSession['id'], $systemMessage]);
+        
+        if ($result) {
+            $messageId = $this->pdo->lastInsertId();
+            
+            // Get the actual timestamp from the database
+            $stmt = $this->pdo->prepare("
+                SELECT created_at FROM messages WHERE id = ?
+            ");
+            $stmt->execute([$messageId]);
+            $timestamp = $stmt->fetchColumn();
+            
+            // Send system message via WebSocket with proper message format
+            $messageResponse = [
+                'type' => 'message',
+                'id' => $messageId,
+                'session_id' => $sessionId,
+                'sender_type' => 'system',
+                'message_type' => 'system',
+                'message' => $systemMessage,
+                'timestamp' => $timestamp,
+                'created_at' => $timestamp
+            ];
+            
+            // Debug: Log connections for this session
+            echo "Broadcasting system message to session: $sessionId\n";
+            echo "Connections in session: " . (isset($this->sessions[$sessionId]) ? count($this->sessions[$sessionId]) : 0) . "\n";
+            
+            // Send the system message to all connections in this session
+            if (isset($this->sessions[$sessionId])) {
+                $sentCount = 0;
+                foreach ($this->sessions[$sessionId] as $resourceId => $client) {
+                    echo "Sending to connection $resourceId (type: {$client['type']})\n";
+                    $client['connection']->send(json_encode($messageResponse));
+                    $sentCount++;
+                }
+                echo "Sent system message to $sentCount connections\n";
+            } else {
+                echo "No connections found for session: $sessionId\n";
+            }
+        }
+        
+        // Also send the original agent_assigned message for backward compatibility
         $response = [
             'type' => 'agent_assigned',
             'session_id' => $sessionId,
-            'message' => 'An agent has joined the chat'
+            'message' => $systemMessage
         ];
         
         if (isset($this->sessions[$sessionId])) {
@@ -381,9 +546,13 @@ class ChatServer implements MessageComponentInterface
                 return;
             }
             
-            // Check for keyword matches
-            $stmt = $this->pdo->prepare("SELECT keyword, response FROM keywords_responses");
-            $stmt->execute();
+            // Check for keyword matches - only get responses for this client
+            $stmt = $this->pdo->prepare("
+                SELECT keyword, response 
+                FROM keywords_responses 
+                WHERE client_id = ? AND is_active = 1
+            ");
+            $stmt->execute([$chatSession['client_id']]);
             $keywordResponses = $stmt->fetchAll();
             
             foreach ($keywordResponses as $keywordResponse) {
@@ -393,8 +562,8 @@ class ChatServer implements MessageComponentInterface
                 if (strpos($messageToCheck, $keyword) !== false) {
                     // Save automated response to database as agent
                     $autoResponseStmt = $this->pdo->prepare("
-                        INSERT INTO messages (session_id, sender_type, sender_id, message, created_at) 
-                        VALUES (?, 'agent', NULL, ?, NOW())
+                        INSERT INTO messages (session_id, sender_type, sender_id, sender_user_type, message, created_at) 
+                        VALUES (?, 'agent', NULL, NULL, ?, NOW())
                     ");
                     $autoResponseStmt->execute([$chatSession['id'], $keywordResponse['response']]);
                     

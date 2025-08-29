@@ -124,7 +124,13 @@
     });
 
     function fetchQuickActions() {
-        fetch(baseUrl + 'chat/quick-actions')
+        // Build URL with API key parameter if available
+        let url = baseUrl + 'chat/quick-actions';
+        if (apiKey) {
+            url += '?api_key=' + encodeURIComponent(apiKey);
+        }
+        
+        fetch(url)
             .then(response => response.json())
             .then(data => {
                 const quickActionsButtons = document.getElementById('quickActionsButtons');

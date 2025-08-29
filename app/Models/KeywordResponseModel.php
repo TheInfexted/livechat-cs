@@ -12,7 +12,7 @@ class KeywordResponseModel extends Model
     protected $returnType = 'array';
     protected $useSoftDeletes = false;
     protected $protectFields = true;
-    protected $allowedFields = ['keyword', 'response', 'is_active', 'created_at', 'updated_at'];
+    protected $allowedFields = ['keyword', 'response', 'is_active', 'client_id', 'created_at', 'updated_at'];
 
     // Dates
     protected $useTimestamps = true;
@@ -71,6 +71,16 @@ class KeywordResponseModel extends Model
         }
         
         return $builder->first() !== null;
+    }
+
+    /**
+     * Get all active keyword responses for a specific client
+     */
+    public function getActiveResponsesForClient($clientId)
+    {
+        return $this->where('is_active', 1)
+                    ->where('client_id', $clientId)
+                    ->findAll();
     }
 
     /**

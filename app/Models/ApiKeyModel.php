@@ -14,7 +14,7 @@ class ApiKeyModel extends Model
     protected $protectFields = true;
     
     protected $allowedFields = [
-        'key_id', 'api_key', 'client_name', 'client_email', 'client_domain',
+        'client_id', 'key_id', 'api_key', 'client_name', 'client_email', 'client_domain',
         'status', 'last_used_at'
     ];
     
@@ -34,7 +34,8 @@ class ApiKeyModel extends Model
     
     public function validateApiKey($apiKey, $domain = null)
     {
-        $key = $this->where('api_key', $apiKey)
+        $key = $this->select('id, client_id, key_id, api_key, client_name, client_email, client_domain, status, last_used_at')
+                   ->where('api_key', $apiKey)
                    ->where('status', 'active')
                    ->first();
         
