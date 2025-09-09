@@ -882,6 +882,100 @@
         }
     }
     
+    // Enhanced user info detection system
+    function detectUserInfo() {
+        // Priority 1: Check current script tag data attributes
+        const currentScript = document.currentScript || 
+                             document.querySelector('script[src*="widget.js"]');
+        
+        if (currentScript) {
+            const dataset = currentScript.dataset;
+            if (dataset.userId || dataset.userName || dataset.userEmail) {
+                return {
+                    isLoggedIn: true,
+                    systemId: dataset.userId || null,
+                    username: dataset.userName || null,
+                    fullname: dataset.userFullname || dataset.userName || null,
+                    email: dataset.userEmail || null
+                };
+            }
+        }
+        
+        // Priority 2: Check for common global user objects
+        const userSources = [
+            // Common patterns in PHP systems
+            () => window.currentUser,
+            () => window.userData,
+            () => window.customerData,
+            () => window.user,
+            () => window.authUser,
+            () => window.loggedInUser,
+            
+            // Laravel patterns
+            () => window.Laravel && window.Laravel.user,
+            
+            // WordPress patterns  
+            () => window.wpUser,
+            
+            // Custom patterns
+            () => window.member,
+            () => window.customer
+        ];
+        
+        for (let source of userSources) {
+            try {
+                const userObj = source();
+                if (userObj && (userObj.id || userObj.user_id || userObj.customer_id || userObj.name || userObj.email)) {
+                    return {
+                        isLoggedIn: true,
+                        systemId: userObj.id || userObj.user_id || userObj.customer_id || null,
+                        username: userObj.username || userObj.user_name || userObj.name || null,
+                        fullname: userObj.name || userObj.fullname || userObj.full_name || userObj.display_name || null,
+                        email: userObj.email || userObj.user_email || null
+                    };
+                }
+            } catch (e) {
+                // Continue to next source
+            }
+        }
+        
+        // Priority 3: Check body/html data attributes
+        const body = document.body;
+        if (body.dataset.userId || body.dataset.userName || body.dataset.userEmail) {
+            return {
+                isLoggedIn: true,
+                systemId: body.dataset.userId || body.dataset.customerId || null,
+                username: body.dataset.userName || body.dataset.username || null,
+                fullname: body.dataset.userFullname || body.dataset.userName || null,
+                email: body.dataset.userEmail || null
+            };
+        }
+        
+        // Priority 4: Check common DOM elements with user info
+        const userElements = [
+            { selector: '[data-user-id]', attr: 'data-user-id' },
+            { selector: '[data-customer-id]', attr: 'data-customer-id' },
+            { selector: '.user-info', attr: 'data-user-id' },
+            { selector: '#user-data', attr: 'data-user-id' }
+        ];
+        
+        for (let element of userElements) {
+            const elem = document.querySelector(element.selector);
+            if (elem && elem.getAttribute(element.attr)) {
+                return {
+                    isLoggedIn: true,
+                    systemId: elem.getAttribute(element.attr),
+                    username: elem.getAttribute('data-username') || elem.getAttribute('data-user-name') || null,
+                    fullname: elem.getAttribute('data-fullname') || elem.getAttribute('data-user-fullname') || null,
+                    email: elem.getAttribute('data-email') || elem.getAttribute('data-user-email') || null
+                };
+            }
+        }
+        
+        // Fallback to anonymous
+        return { isLoggedIn: false };
+    }
+    
     // Auto-initialize when DOM is ready
     function initWidget() {
         const config = window.LiveChatConfig || {};
@@ -889,6 +983,12 @@
         if (!config.baseUrl || !config.apiKey) {
             console.error('LiveChat: Missing required config - baseUrl or apiKey');
             return;
+        }
+        
+        // Auto-detect user info if not provided
+        if (!config.user) {
+            config.user = detectUserInfo();
+            console.log('LiveChat: Auto-detected user info:', config.user);
         }
         
         // Ensure position is properly extracted from config
