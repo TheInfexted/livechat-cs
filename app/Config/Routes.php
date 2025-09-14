@@ -11,6 +11,8 @@ $routes->get('/chat', 'ChatController::index');
 $routes->post('/chat/start-session', 'ChatController::startSession');
 $routes->post('/chat/assign-agent', 'ChatController::assignAgent');
 $routes->get('/chat/messages/(:segment)', 'ChatController::getMessages/$1');
+$routes->get('/chat/messages-with-history/(:segment)', 'ChatController::getMessagesWithHistory/$1');
+$routes->get('/chat/chat-history', 'ChatController::getChatHistory');
 $routes->post('/chat/close-session', 'ChatController::closeSession');
 $routes->get('/chat/check-session-status/(:segment)', 'ChatController::checkSessionStatus/$1');
 $routes->post('/chat/end-customer-session', 'ChatController::endCustomerSession');

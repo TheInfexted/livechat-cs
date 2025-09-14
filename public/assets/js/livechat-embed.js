@@ -317,7 +317,7 @@
 
             // Add user information if provided
             if (userInfo && !userInfo.isAnonymous) {
-                if (userInfo.userId) params.append('external_user_id', userInfo.userId);
+                if (userInfo.userId) params.append('external_system_id', userInfo.userId);
                 if (userInfo.name) params.append('external_fullname', userInfo.name);
                 if (userInfo.email) params.append('external_email', userInfo.email);
                 if (userInfo.username) params.append('external_username', userInfo.username);

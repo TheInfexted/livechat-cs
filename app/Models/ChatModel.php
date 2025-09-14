@@ -8,7 +8,7 @@ class ChatModel extends Model
 {
     protected $table = 'chat_sessions';
     protected $primaryKey = 'id';
-    protected $allowedFields = ['client_id', 'session_id', 'customer_name', 'customer_fullname', 'chat_topic', 'customer_email', 'user_role', 'external_username', 'external_fullname', 'external_system_id', 'agent_id', 'api_key', 'status', 'closed_at'];
+    protected $allowedFields = ['client_id', 'session_id', 'customer_name', 'customer_fullname', 'chat_topic', 'customer_email', 'customer_phone', 'user_role', 'external_username', 'external_fullname', 'external_system_id', 'agent_id', 'api_key', 'status', 'closed_at'];
     
     public function getActiveSessions()
     {
@@ -43,5 +43,37 @@ class ChatModel extends Model
     public function getSessionBySessionId($sessionId)
     {
         return $this->where('session_id', $sessionId)->first();
+    }
+    
+    public function getResumableSessionForUser($externalUsername, $externalFullname, $externalSystemId, $minutesBack = 30)
+    {
+        $timeThreshold = date('Y-m-d H:i:s', strtotime("-{$minutesBack} minutes"));
+        
+        $query = $this->where('user_role', 'loggedUser')
+                     ->whereIn('status', ['active', 'waiting'])
+                     ->where('created_at >=', $timeThreshold);
+        
+        // Build user matching conditions
+        if ($externalUsername && $externalFullname) {
+            $query->groupStart()
+                  ->where('external_username', $externalUsername)
+                  ->orWhere('external_fullname', $externalFullname)
+                  ->groupEnd();
+        } elseif ($externalUsername) {
+            $query->where('external_username', $externalUsername);
+        } elseif ($externalFullname) {
+            $query->where('external_fullname', $externalFullname);
+        } else {
+            return null; // No user identifier provided
+        }
+        
+        // Add external_system_id if available for extra verification
+        if ($externalSystemId) {
+            $query->where('external_system_id', $externalSystemId);
+        }
+        
+        return $query->orderBy('created_at', 'DESC')
+                    ->orderBy('updated_at', 'DESC')
+                    ->first();
     }
 }

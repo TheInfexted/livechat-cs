@@ -26,7 +26,19 @@
     </div>
     
     <div id="chatInterface">
-        <?php if (!$session_id): ?>
+        <?php if (isset($auto_session_error) && $auto_session_error): ?>
+        <!-- Show error for failed auto-session creation -->
+        <div class="chat-error">
+            <h4>Chat Unavailable</h4>
+            <div class="error-message">
+                <p style="color: #dc3545; margin-bottom: 15px;">
+                    <strong>Error:</strong> <?= htmlspecialchars($auto_session_error) ?>
+                </p>
+                <p>We're sorry for the inconvenience. Please try refreshing the page or contact support directly.</p>
+                <button onclick="location.reload()" class="btn btn-primary">Try Again</button>
+            </div>
+        </div>
+        <?php elseif (!$session_id): ?>
         <div class="chat-start-form">
             <h4>Start a Conversation</h4>
                     <form id="startChatForm">
@@ -36,6 +48,7 @@
                         <input type="hidden" name="external_fullname" value="<?= $external_fullname ?? '' ?>">
                         <input type="hidden" name="external_system_id" value="<?= $external_system_id ?? '' ?>">
                         <input type="hidden" name="api_key" value="<?= $api_key ?? '' ?>">
+                        <input type="hidden" name="customer_phone" value="<?= $customer_phone ?? '' ?>">
                         
                         <?php if ($user_role === 'loggedUser' && ($external_fullname || $external_username)): ?>
                             <!-- For logged users, show the name as read-only -->
@@ -58,7 +71,12 @@
                         </div>
                         <div class="form-group">
                             <label for="customerEmail">Email (Optional)</label>
-                            <input type="email" id="customerEmail" name="email">
+                            <?php if ($user_role === 'loggedUser' && !empty($external_email)): ?>
+                            <input type="email" id="customerEmail" name="email" value="<?= esc($external_email) ?>" readonly style="background-color: #f0f0f0;">
+                            <small style="color: #666;">This email was provided by your system login.</small>
+                            <?php else: ?>
+                            <input type="email" id="customerEmail" name="email" value="<?= esc($external_email ?? '') ?>">
+                            <?php endif; ?>
                         </div>
                         
                         <?php if ($user_role === 'loggedUser'): ?>
@@ -114,6 +132,8 @@
     let externalFullname = '<?= $external_fullname ?? '' ?>';
     let externalSystemId = '<?= $external_system_id ?? '' ?>';
     let apiKey = '<?= $api_key ?? '' ?>';
+    let customerPhone = '<?= $customer_phone ?? '' ?>';
+    let externalEmail = '<?= $external_email ?? '' ?>';
     let isIframe = <?= $is_iframe ? 'true' : 'false' ?>;
     
     // Load quick actions when page loads
@@ -335,6 +355,7 @@
                 <input type="hidden" name="external_fullname" value="${externalFullname}">
                 <input type="hidden" name="external_system_id" value="${externalSystemId}">
                 <input type="hidden" name="api_key" value="${apiKey}">
+                <input type="hidden" name="customer_phone" value="${customerPhone}">
             `;
             
             chatInterface.innerHTML = `
@@ -350,7 +371,11 @@
                         </div>
                         <div class="form-group">
                             <label for="customerEmail">Email (Optional)</label>
-                            <input type="email" id="customerEmail" name="email">
+                            ${userRole === 'loggedUser' && externalEmail ? 
+                                `<input type="email" id="customerEmail" name="email" value="${externalEmail}" readonly style="background-color: #f0f0f0;">
+                                <small style="color: #666;">This email was provided by your system login.</small>` :
+                                `<input type="email" id="customerEmail" name="email" value="${externalEmail}">`
+                            }
                         </div>
                         ${statusMessageHtml}
                         <button type="submit" class="btn btn-primary">Start New Chat</button>

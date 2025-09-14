@@ -442,7 +442,7 @@
             
             if (userInfo && !userInfo.isAnonymous) {
                 if (userInfo.userId || userInfo.id) {
-                    url += `&external_user_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
+                    url += `&external_system_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
                 }
                 if (userInfo.name || userInfo.fullname) {
                     url += `&external_fullname=${encodeURIComponent(userInfo.name || userInfo.fullname)}`;
@@ -452,6 +452,9 @@
                 }
                 if (userInfo.username) {
                     url += `&external_username=${encodeURIComponent(userInfo.username)}`;
+                }
+                if (userInfo.phone) {
+                    url += `&customer_phone=${encodeURIComponent(userInfo.phone)}`;
                 }
                 url += '&user_role=loggedUser';
             } else {
@@ -474,7 +477,7 @@
             
             if (userInfo) {
                 if (userInfo.userId || userInfo.id) {
-                    url += `&external_user_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
+                    url += `&external_system_id=${encodeURIComponent(userInfo.userId || userInfo.id)}`;
                 }
                 if (userInfo.name || userInfo.fullname) {
                     url += `&external_fullname=${encodeURIComponent(userInfo.name || userInfo.fullname)}`;
@@ -484,6 +487,9 @@
                 }
                 if (userInfo.username) {
                     url += `&external_username=${encodeURIComponent(userInfo.username)}`;
+                }
+                if (userInfo.phone) {
+                    url += `&customer_phone=${encodeURIComponent(userInfo.phone)}`;
                 }
                 url += '&user_role=loggedUser';
             }

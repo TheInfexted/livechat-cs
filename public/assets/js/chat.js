@@ -224,7 +224,27 @@ async function loadChatHistory() {
     if (!currentSession) return;
     
     try {
-        const response = await fetch(`/chat/messages/${currentSession}`);
+        // Check if this is a logged user with chat history enabled
+        let messagesUrl = `/chat/messages/${currentSession}`;
+        
+        // For logged users, use the endpoint that includes historical messages
+        if (typeof userRole !== 'undefined' && userRole === 'loggedUser' && 
+            (typeof externalUsername !== 'undefined' || typeof externalFullname !== 'undefined')) {
+            const params = new URLSearchParams();
+            if (typeof externalUsername !== 'undefined' && externalUsername) {
+                params.append('external_username', externalUsername);
+            }
+            if (typeof externalFullname !== 'undefined' && externalFullname) {
+                params.append('external_fullname', externalFullname);
+            }
+            if (typeof externalSystemId !== 'undefined' && externalSystemId) {
+                params.append('external_system_id', externalSystemId);
+            }
+            
+            messagesUrl = `/chat/messages-with-history/${currentSession}?${params.toString()}`;
+        }
+        
+        const response = await fetch(messagesUrl);
         const messages = await response.json();
         
         const container = document.getElementById('messagesContainer');
@@ -242,8 +262,9 @@ async function loadChatHistory() {
             
             // Process messages and add date separators
             let previousDate = null;
+            let hasHistoricalMessages = false;
             
-            messages.forEach(message => {
+            messages.forEach((message, index) => {
                 // Ensure each message has proper timestamp
                 message = ensureMessageTimestamp(message);
                 
@@ -255,15 +276,31 @@ async function loadChatHistory() {
 
                 const messageDate = new Date(message.created_at || message.timestamp).toDateString();
                 
+                // Check if this message is from a different session (historical)
+                const isHistoricalMessage = message.chat_session_id && message.chat_session_id !== currentSession;
+                
+                // Track historical messages for notification
+                if (isHistoricalMessage && !hasHistoricalMessages) {
+                    hasHistoricalMessages = true;
+                }
+                
                 // Add date separator if date changed
                 if (previousDate !== messageDate) {
                     displayDateSeparator(formatChatDate(message.created_at || message.timestamp));
                     previousDate = messageDate;
                 }
 
-                // Display the message
+                // Display the message with special styling for historical messages
+                if (isHistoricalMessage) {
+                    message._isHistorical = true;
+                }
                 displayMessage(message);
             });
+            
+            // Show a notification if historical messages were loaded
+            if (hasHistoricalMessages && messages.length > 0) {
+                showHistoryLoadedNotification(messages.filter(msg => msg.chat_session_id !== currentSession).length);
+            }
         }
     } catch (error) {
         // Error handling without console log
@@ -467,7 +504,8 @@ function displaySystemMessage(message) {
     }
     
     const messageDiv = document.createElement('div');
-    messageDiv.className = 'message system';
+    const baseClass = `message ${data.sender_type || 'system'}`;
+    messageDiv.className = data._isHistorical ? `${baseClass} historical` : baseClass;
     
     // Add proper date metadata to system messages
     messageDiv.dataset.messageDate = currentDateString;
@@ -596,6 +634,7 @@ function startNewChat() {
             <input type="hidden" name="external_fullname" value="${currentExternalFullname}">
             <input type="hidden" name="external_system_id" value="${currentExternalSystemId}">
             <input type="hidden" name="api_key" value="${currentApiKey}">
+            <input type="hidden" name="customer_phone" value="${typeof currentCustomerPhone !== 'undefined' ? currentCustomerPhone : ''}">
         `;
         
         chatInterface.innerHTML = `
@@ -1622,6 +1661,28 @@ function initializeChatContainer() {
             container.closest('.chat-container')?.classList.add('customer-chat');
         }
     }
+}
+
+// Helper function for chat history notification
+function showHistoryLoadedNotification(messageCount) {
+    const container = document.getElementById('messagesContainer');
+    if (!container) return;
+    
+    const notificationDiv = document.createElement('div');
+    notificationDiv.className = 'history-notification';
+    notificationDiv.innerHTML = `
+        <p>📜 ${messageCount} messages from your previous conversations are included</p>
+    `;
+    
+    // Insert at the top of the container
+    container.insertBefore(notificationDiv, container.firstChild);
+    
+    // Auto-remove after 4 seconds
+    setTimeout(() => {
+        if (notificationDiv.parentNode) {
+            notificationDiv.remove();
+        }
+    }, 4000);
 }
 
 // Initialize WebSocket on page load

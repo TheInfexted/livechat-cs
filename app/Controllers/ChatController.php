@@ -8,6 +8,21 @@ class ChatController extends General
 {
     public function index()
     {
+        // Handle iframe integration parameters first
+        $isIframe = $this->request->getGet('iframe') === '1';
+        $isFullscreen = $this->request->getGet('fullscreen') === '1';
+        $apiKey = $this->sanitizeInput($this->request->getGet('api_key'));
+        $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
+        $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
+        $externalSystemId = $this->sanitizeInput($this->request->getGet('external_system_id'));
+        $customerPhone = $this->sanitizeInput($this->request->getGet('customer_phone'));
+        // Normalize phone to digits only
+        if ($customerPhone) {
+            $customerPhone = preg_replace('/\D/', '', $customerPhone);
+        }
+        $externalEmail = $this->sanitizeInput($this->request->getGet('external_email'));
+        $userRole = $this->sanitizeInput($this->request->getGet('user_role')) ?: 'anonymous';
+        
         $sessionId = $this->session->get('chat_session_id');
         $validSession = null;
         
@@ -15,21 +30,43 @@ class ChatController extends General
         if ($sessionId) {
             $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
             if ($chatSession && $chatSession['status'] !== 'closed') {
-                $validSession = $sessionId;
+                // For logged users, also verify the session belongs to them
+                if ($userRole === 'loggedUser' && ($externalUsername || $externalFullname)) {
+                    $sessionBelongsToUser = false;
+                    
+                    // Check if session matches the user's identity
+                    if (($externalUsername && $chatSession['external_username'] === $externalUsername) ||
+                        ($externalFullname && $chatSession['external_fullname'] === $externalFullname)) {
+                        $sessionBelongsToUser = true;
+                    }
+                    
+                    // Also check external_system_id for extra verification
+                    if ($externalSystemId && $chatSession['external_system_id'] === $externalSystemId) {
+                        $sessionBelongsToUser = true;
+                    }
+                    
+                    if ($sessionBelongsToUser) {
+                        $validSession = $sessionId;
+                        error_log('DEBUG - Validated existing PHP session for logged user: ' . $sessionId);
+                    } else {
+                        // Session doesn't belong to this user, clear it
+                        $this->session->remove('chat_session_id');
+                        error_log('DEBUG - Cleared PHP session that does not belong to current logged user');
+                    }
+                } else {
+                    // For anonymous users or when no identity is provided, session is valid
+                    $validSession = $sessionId;
+                }
             } else {
                 // Clear invalid session from PHP session
                 $this->session->remove('chat_session_id');
+                if ($chatSession) {
+                    error_log('DEBUG - Cleared closed session from PHP session: ' . $sessionId);
+                } else {
+                    error_log('DEBUG - Cleared non-existent session from PHP session: ' . $sessionId);
+                }
             }
         }
-        
-        // Handle iframe integration parameters
-        $isIframe = $this->request->getGet('iframe') === '1';
-        $isFullscreen = $this->request->getGet('fullscreen') === '1';
-        $apiKey = $this->sanitizeInput($this->request->getGet('api_key'));
-        $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
-        $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
-        $externalSystemId = $this->sanitizeInput($this->request->getGet('external_system_id'));
-        $userRole = $this->sanitizeInput($this->request->getGet('user_role')) ?: 'anonymous';
         
         // Validate API key for iframe integrations
         if ($isIframe && $apiKey) {
@@ -43,6 +80,46 @@ class ChatController extends General
             }
         }
         
+        // Smart session management for logged users
+        $autoSessionError = null;
+        if ($userRole === 'loggedUser' && !$validSession && ($externalUsername || $externalFullname)) {
+            try {
+                // First, try to find a resumable session
+                $resumableSession = $this->findResumableSession($externalUsername, $externalFullname, $externalSystemId);
+                
+                if ($resumableSession) {
+                    // Resume existing session
+                    $validSession = $resumableSession['session_id'];
+                    
+                    // Update PHP session to track this resumed session
+                    $this->session->set('chat_session_id', $validSession);
+                    $this->session->set('user_role', 'loggedUser');
+                    
+                    error_log('DEBUG - Resuming existing session for logged user: ' . $validSession . ' (Status: ' . $resumableSession['status'] . ')');
+                } else {
+                    // No resumable session found, create new one
+                    $autoSessionResult = $this->autoCreateSessionForLoggedUser(
+                        $externalUsername, 
+                        $externalFullname, 
+                        $externalSystemId, 
+                        $apiKey,
+                        $customerPhone,
+                        $externalEmail
+                    );
+                    
+                    if ($autoSessionResult['success']) {
+                        $validSession = $autoSessionResult['session_id'];
+                        error_log('DEBUG - Created new session for logged user: ' . $validSession);
+                    } else {
+                        $autoSessionError = $autoSessionResult['error'];
+                    }
+                }
+            } catch (Exception $e) {
+                $autoSessionError = 'Failed to start chat session automatically. Please try again.';
+                error_log('Auto-session creation/resumption failed: ' . $e->getMessage());
+            }
+        }
+        
         $data = [
             'title' => 'Customer Support Chat',
             'session_id' => $validSession,
@@ -52,7 +129,10 @@ class ChatController extends General
             'external_username' => $externalUsername,
             'external_fullname' => $externalFullname,
             'external_system_id' => $externalSystemId,
-            'user_role' => $userRole
+            'customer_phone' => $customerPhone,
+            'external_email' => $externalEmail,
+            'user_role' => $userRole,
+            'auto_session_error' => $autoSessionError
         ];
         
         return view('chat/customer', $data);
@@ -65,6 +145,11 @@ class ChatController extends General
         $topicInput = $this->sanitizeInput($this->request->getPost('chat_topic'));
         $legacyNameInput = $this->sanitizeInput($this->request->getPost('name')); // For backwards compatibility
         $email = $this->sanitizeInput($this->request->getPost('email'));
+        $customerPhone = $this->sanitizeInput($this->request->getPost('customer_phone'));
+        // Normalize phone to digits only
+        if ($customerPhone) {
+            $customerPhone = preg_replace('/\D/', '', $customerPhone);
+        }
         
         // Role-based parameters
         $userRole = $this->sanitizeInput($this->request->getPost('user_role')) ?: 'anonymous';
@@ -152,12 +237,29 @@ class ChatController extends General
             }
         }
         
+        // Additional context for logged users
+        $additionalContext = [];
+        if ($userRole === 'loggedUser') {
+            $additionalContext = [
+                'member_type' => 'verified_user',
+                'login_method' => 'external_system',
+                'session_source' => 'manual_form_submission' // vs auto-created
+            ];
+            
+            // Log additional context for logged users
+            error_log('DEBUG - Manual session creation for logged user: ' . $customerName);
+            if ($externalSystemId) {
+                error_log('DEBUG - External system ID: ' . $externalSystemId);
+            }
+        }
+        
         $data = [
             'session_id' => $sessionId,
             'customer_name' => $customerName,
             'customer_fullname' => $customerFullName,
             'chat_topic' => $topic,
             'customer_email' => $email,
+            'customer_phone' => $customerPhone,
             'user_role' => $userRole,
             'external_username' => $externalUsername,
             'external_fullname' => $externalFullname,
@@ -167,9 +269,17 @@ class ChatController extends General
             'status' => 'waiting'
         ];
         
+        // Merge additional context if available
+        if (!empty($additionalContext)) {
+            // Store additional context in a JSON field or use for logging
+            error_log('DEBUG - Additional logged user context: ' . print_r($additionalContext, true));
+        }
+        
         // Debug logging for database insertion
         error_log('DEBUG - About to insert chat session with data: ' . print_r($data, true));
         error_log('DEBUG - Client ID specifically: ' . var_export($clientId, true));
+        error_log('DEBUG - Email field specifically: ' . var_export($email, true));
+        error_log('DEBUG - Customer email in data array: ' . var_export($data['customer_email'], true));
         
         $chatId = $this->chatModel->insert($data);
         
@@ -222,6 +332,72 @@ class ChatController extends General
     {
         $messages = $this->messageModel->getSessionMessages($sessionId);
         return $this->jsonResponse($messages);
+    }
+    
+    /**
+     * Get messages with optional chat history for logged users
+     */
+    public function getMessagesWithHistory($sessionId)
+    {
+        // Get user identity from session or request
+        $userRole = $this->session->get('user_role');
+        $externalUsername = $this->request->getGet('external_username');
+        $externalFullname = $this->request->getGet('external_fullname');
+        $externalSystemId = $this->request->getGet('external_system_id');
+        
+        // Default to current session messages only
+        $includeHistory = false;
+        
+        // Only include history for logged users with valid identity
+        if ($userRole === 'loggedUser' && ($externalUsername || $externalFullname)) {
+            $includeHistory = true;
+        }
+        
+        $messages = $this->messageModel->getSessionMessagesWithHistory(
+            $sessionId, 
+            $includeHistory, 
+            $externalUsername, 
+            $externalFullname, 
+            $externalSystemId
+        );
+        
+        return $this->jsonResponse($messages);
+    }
+    
+    /**
+     * Get chat history for a logged user (30 days)
+     */
+    public function getChatHistory()
+    {
+        $externalUsername = $this->sanitizeInput($this->request->getGet('external_username'));
+        $externalFullname = $this->sanitizeInput($this->request->getGet('external_fullname'));
+        $externalSystemId = $this->sanitizeInput($this->request->getGet('external_system_id'));
+        $currentSessionId = $this->sanitizeInput($this->request->getGet('current_session_id'));
+        
+        // Validate that we have some form of user identification
+        if (!$externalUsername && !$externalFullname) {
+            return $this->jsonResponse(['error' => 'User identification required for chat history'], 400);
+        }
+        
+        try {
+            $messages = $this->messageModel->getUserChatHistory(
+                $externalUsername, 
+                $externalFullname, 
+                $externalSystemId, 
+                30, // 30 days back
+                $currentSessionId // Exclude current session
+            );
+            
+            return $this->jsonResponse([
+                'success' => true,
+                'messages' => $messages,
+                'count' => count($messages)
+            ]);
+            
+        } catch (Exception $e) {
+            error_log('Error loading chat history: ' . $e->getMessage());
+            return $this->jsonResponse(['error' => 'Failed to load chat history'], 500);
+        }
     }
     
     public function closeSession()
@@ -693,6 +869,135 @@ class ChatController extends General
         
         // Future enhancement: Send WebSocket message to close session for all connected clients
         // For now, admins will see the session as closed when they refresh or check status
+    }
+    
+    /**
+     * Find resumable session for logged user
+     */
+    private function findResumableSession($externalUsername, $externalFullname, $externalSystemId)
+    {
+        if (!$externalUsername && !$externalFullname) {
+            return null;
+        }
+        
+        // Use the model method to find resumable session (30 minutes)
+        $session = $this->chatModel->getResumableSessionForUser($externalUsername, $externalFullname, $externalSystemId, 30);
+        
+        if ($session) {
+            error_log('DEBUG - Found resumable session for logged user: ' . print_r([
+                'session_id' => $session['session_id'],
+                'external_username' => $externalUsername,
+                'external_fullname' => $externalFullname,
+                'external_system_id' => $externalSystemId,
+                'session_status' => $session['status'],
+                'session_age_minutes' => round((strtotime(date('Y-m-d H:i:s')) - strtotime($session['created_at'])) / 60),
+                'agent_assigned' => $session['agent_id'] ? 'Yes (ID: ' . $session['agent_id'] . ')' : 'No'
+            ], true));
+            
+            return $session;
+        }
+        
+        error_log('DEBUG - No resumable session found for logged user: ' . ($externalUsername ?: 'N/A') . '/' . ($externalFullname ?: 'N/A') . ' (External ID: ' . ($externalSystemId ?: 'N/A') . ')');
+        return null;
+    }
+    
+    /**
+     * Auto-create chat session for logged users
+     */
+    private function autoCreateSessionForLoggedUser($externalUsername, $externalFullname, $externalSystemId, $apiKey, $customerPhone = null, $externalEmail = null)
+    {
+        // Validate role exists
+        if (!$this->userRoleModel->getRoleByName('loggedUser')) {
+            return ['success' => false, 'error' => 'Invalid user role specified'];
+        }
+        
+        // Check if role can access chat
+        if (!$this->userRoleModel->canAccessChat('loggedUser')) {
+            return ['success' => false, 'error' => 'This role is not allowed to access chat'];
+        }
+        
+        // Validate API key and get client_id if provided
+        $clientId = null;
+        if ($apiKey) {
+            $apiKeyModel = new \App\Models\ApiKeyModel();
+            $domain = $this->request->getServer('HTTP_REFERER') ? parse_url($this->request->getServer('HTTP_REFERER'), PHP_URL_HOST) : null;
+            $validation = $apiKeyModel->validateApiKey($apiKey, $domain);
+            
+            if (!$validation['valid']) {
+                return ['success' => false, 'error' => $validation['error']];
+            }
+            
+            // Get client_id from API key data
+            $keyData = $validation['key_data'];
+            if (isset($keyData['client_id']) && $keyData['client_id']) {
+                $clientId = (int)$keyData['client_id'];
+            }
+        }
+        
+        $sessionId = $this->generateSessionId();
+        
+        // Determine customer name based on available information
+        $customerName = 'Member';
+        $customerFullName = 'Member';
+        
+        if (!empty($externalFullname)) {
+            $customerName = $externalFullname;
+            $customerFullName = $externalFullname;
+        } elseif (!empty($externalUsername)) {
+            $customerName = $externalUsername;
+            $customerFullName = $externalUsername;
+        }
+        
+        // Additional context for auto-created sessions
+        $sessionContext = [
+            'member_type' => 'verified_user',
+            'login_method' => 'external_system',
+            'session_source' => 'auto_created',
+            'auto_topic' => 'Member Support'
+        ];
+        
+        $data = [
+            'session_id' => $sessionId,
+            'customer_name' => $customerName,
+            'customer_fullname' => $customerFullName,
+            'chat_topic' => 'Member Support', // Default topic for logged users
+            'customer_email' => $externalEmail, // Use external email if available
+            'customer_phone' => $customerPhone,
+            'user_role' => 'loggedUser',
+            'external_username' => $externalUsername,
+            'external_fullname' => $externalFullname,
+            'external_system_id' => $externalSystemId,
+            'api_key' => $apiKey,
+            'client_id' => $clientId,
+            'status' => 'waiting'
+        ];
+        
+        // Debug logging for auto-session creation
+        error_log('DEBUG - Auto-creating NEW chat session for logged user: ' . $customerName . ' (No resumable session found)');
+        error_log('DEBUG - New session data: ' . print_r($data, true));
+        error_log('DEBUG - Session context: ' . print_r($sessionContext, true));
+        if ($externalSystemId) {
+            error_log('DEBUG - Auto-session External system ID: ' . $externalSystemId);
+        }
+        
+        $chatId = $this->chatModel->insert($data);
+        
+        if ($chatId) {
+            $this->session->set('chat_session_id', $sessionId);
+            $this->session->set('user_role', 'loggedUser');
+            
+            error_log('DEBUG - Auto-created chat session successfully with ID: ' . $chatId);
+            
+            return [
+                'success' => true,
+                'session_id' => $sessionId,
+                'chat_id' => $chatId,
+                'user_role' => 'loggedUser'
+            ];
+        }
+        
+        error_log('DEBUG - Failed to auto-create chat session');
+        return ['success' => false, 'error' => 'Failed to start chat session'];
     }
     
     /**
