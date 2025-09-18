@@ -72,7 +72,6 @@
                 
                 // Handle close message from fullscreen chat iframe
                 if (event.data && event.data.type === 'close_fullscreen_chat' && event.data.source === 'livechat_iframe') {
-                    console.log('Received close fullscreen chat message from iframe');
                     this.closeFullscreenChat();
                 }
             });
@@ -96,19 +95,15 @@
                 ...this.config.embedConfig,
                 callbacks: {
                     onOpen: () => {
-                        console.log('LiveChat embed opened');
                         if (this.config.onOpen) this.config.onOpen();
                     },
                     onClose: () => {
-                        console.log('LiveChat embed closed');
                         if (this.config.onClose) this.config.onClose();
                     },
                     onReady: () => {
-                        console.log('LiveChat embed ready');
                         if (this.config.onReady) this.config.onReady();
                     },
                     onError: (error) => {
-                        console.error('LiveChat embed error:', error);
                         if (this.config.onError) this.config.onError(error);
                     }
                 }
@@ -190,8 +185,6 @@
                     systemId: userInfo.userId || userInfo.id
                 });
                 window.LiveChatWidget.open();
-            } else {
-                console.error('LiveChat widget not initialized');
             }
         },
 
@@ -461,7 +454,6 @@
                 url += '&user_role=anonymous';
             }
             
-            console.log('Fullscreen chat URL:', url); // Debug log
             return url;
         },
 
@@ -548,8 +540,6 @@
                     isLoggedIn: false
                 });
                 window.LiveChatWidget.open();
-            } else {
-                console.error('LiveChat widget not initialized');
             }
         },
 
@@ -626,7 +616,6 @@
          */
         setWidgetPosition: function(position) {
             if (this.config.mode !== 'widget') {
-                console.warn('setWidgetPosition only works in widget mode');
                 return;
             }
             

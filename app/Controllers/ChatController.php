@@ -339,8 +339,9 @@ class ChatController extends General
      */
     public function getMessagesWithHistory($sessionId)
     {
-        // Get user identity from session or request
-        $userRole = $this->session->get('user_role');
+        // Get user identity from session or request parameters
+        // Try PHP session first, but fall back to request parameters (important for new sessions)
+        $userRole = $this->session->get('user_role') ?: $this->request->getGet('user_role');
         $externalUsername = $this->request->getGet('external_username');
         $externalFullname = $this->request->getGet('external_fullname');
         $externalSystemId = $this->request->getGet('external_system_id');
@@ -880,8 +881,10 @@ class ChatController extends General
             return null;
         }
         
-        // Use the model method to find resumable session (30 minutes)
-        $session = $this->chatModel->getResumableSessionForUser($externalUsername, $externalFullname, $externalSystemId, 30);
+        // Use the model method to find resumable session (24 hours for logged users)
+        $chatConfig = new \Config\Chat();
+        $resumableWindowMinutes = $chatConfig->loggedUserResumableWindow / 60; // Convert seconds to minutes
+        $session = $this->chatModel->getResumableSessionForUser($externalUsername, $externalFullname, $externalSystemId, $resumableWindowMinutes);
         
         if ($session) {
             error_log('DEBUG - Found resumable session for logged user: ' . print_r([

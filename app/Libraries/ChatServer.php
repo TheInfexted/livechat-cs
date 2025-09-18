@@ -4,12 +4,14 @@ namespace App\Libraries;
 
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
+use React\EventLoop\Loop;
 
 class ChatServer implements MessageComponentInterface
 {
     protected $clients;
     protected $sessions;
     protected $pdo;
+    protected $cleanupTimer;
     
     public function __construct()
     {
@@ -546,14 +548,48 @@ class ChatServer implements MessageComponentInterface
                 return;
             }
             
-            // Check for keyword matches - only get responses for this client
-            $stmt = $this->pdo->prepare("
-                SELECT keyword, response 
-                FROM keywords_responses 
-                WHERE client_id = ? AND is_active = 1
-            ");
-            $stmt->execute([$chatSession['client_id']]);
-            $keywordResponses = $stmt->fetchAll();
+            // Check for keyword matches - handle both specific client and general responses
+            $clientId = $chatSession['client_id'];
+            
+            if ($clientId) {
+                // Get responses for specific client
+                $stmt = $this->pdo->prepare("
+                    SELECT keyword, response 
+                    FROM keywords_responses 
+                    WHERE client_id = ? AND is_active = 1
+                ");
+                $stmt->execute([$clientId]);
+                $keywordResponses = $stmt->fetchAll();
+            } else {
+                // If no client_id, try to get a default set of responses
+                // First, try to determine client_id from API key in the session
+                if (!empty($chatSession['api_key'])) {
+                    $apiKeyStmt = $this->pdo->prepare("SELECT client_id FROM api_keys WHERE api_key = ? AND status = 'active'");
+                    $apiKeyStmt->execute([$chatSession['api_key']]);
+                    $apiKeyResult = $apiKeyStmt->fetch();
+                    
+                    if ($apiKeyResult && $apiKeyResult['client_id']) {
+                        $clientId = $apiKeyResult['client_id'];
+                        
+                        // Update the session with the client_id for future use
+                        $updateStmt = $this->pdo->prepare("UPDATE chat_sessions SET client_id = ? WHERE id = ?");
+                        $updateStmt->execute([$clientId, $chatSession['id']]);
+                        
+                        // Get responses for this client
+                        $stmt = $this->pdo->prepare("
+                            SELECT keyword, response 
+                            FROM keywords_responses 
+                            WHERE client_id = ? AND is_active = 1
+                        ");
+                        $stmt->execute([$clientId]);
+                        $keywordResponses = $stmt->fetchAll();
+                    } else {
+                        $keywordResponses = [];
+                    }
+                } else {
+                    $keywordResponses = [];
+                }
+            }
             
             foreach ($keywordResponses as $keywordResponse) {
                 $keyword = strtolower($keywordResponse['keyword']);
@@ -621,5 +657,133 @@ class ChatServer implements MessageComponentInterface
                 }
             }
         }
+    }
+    
+    /**
+     * Role-based session cleanup - only cleans up anonymous user sessions
+     * Logged users ('loggedUser') sessions are NEVER automatically cleaned up
+     */
+    protected function cleanupInactiveSessions()
+    {
+        try {
+            $this->ensureDatabaseConnection();
+            if (!$this->pdo) {
+                return;
+            }
+            
+            // Configuration for session timeouts (30 minutes for anonymous users)
+            $sessionTimeoutMinutes = 30;
+            $inactiveTimeoutMinutes = 60;
+            $timeThreshold = date('Y-m-d H:i:s', strtotime("-{$sessionTimeoutMinutes} minutes"));
+            $inactiveThreshold = date('Y-m-d H:i:s', strtotime("-{$inactiveTimeoutMinutes} minutes"));
+            
+            // CRITICAL: Only cleanup anonymous user sessions that are inactive
+            // NEVER cleanup 'loggedUser' sessions - they should persist indefinitely
+            $stmt = $this->pdo->prepare("
+                SELECT id, session_id, customer_name, user_role, updated_at
+                FROM chat_sessions 
+                WHERE user_role = 'anonymous' 
+                  AND status IN ('waiting', 'active')
+                  AND (
+                    (status = 'waiting' AND created_at < ?) OR
+                    (status = 'active' AND updated_at < ?)
+                  )
+            ");
+            
+            $stmt->execute([$timeThreshold, $inactiveThreshold]);
+            $inactiveSessions = $stmt->fetchAll();
+            
+            // Double-check: Filter out any logged user sessions as an extra safety measure
+            $inactiveSessions = array_filter($inactiveSessions, function($session) {
+                return $session['user_role'] === 'anonymous';
+            });
+            
+            echo "Found " . count($inactiveSessions) . " inactive anonymous sessions to cleanup\n";
+            
+            // Count total logged user sessions for monitoring
+            $loggedUserStmt = $this->pdo->prepare("
+                SELECT COUNT(*) as count 
+                FROM chat_sessions 
+                WHERE user_role = 'loggedUser' AND status IN ('waiting', 'active')
+            ");
+            $loggedUserStmt->execute();
+            $loggedUserCount = $loggedUserStmt->fetchColumn();
+            echo "Active logged user sessions (protected from cleanup): " . $loggedUserCount . "\n";
+            
+            foreach ($inactiveSessions as $session) {
+                // Final safety check before closing
+                if ($session['user_role'] !== 'anonymous') {
+                    echo "WARNING: Skipped closing session {$session['session_id']} - not anonymous user (role: {$session['user_role']})\n";
+                    continue;
+                }
+                $this->closeInactiveSession($session);
+            }
+            
+        } catch (\Exception $e) {
+            echo "Error during session cleanup: " . $e->getMessage() . "\n";
+        }
+    }
+    
+    /**
+     * Close an inactive anonymous session
+     */
+    protected function closeInactiveSession($session)
+    {
+        try {
+            // Update session status to closed
+            $stmt = $this->pdo->prepare("
+                UPDATE chat_sessions 
+                SET status = 'closed', closed_at = NOW() 
+                WHERE id = ?
+            ");
+            $stmt->execute([$session['id']]);
+            
+            // Add system message about timeout
+            $timeoutMessage = 'Session automatically closed due to inactivity';
+            $stmt = $this->pdo->prepare("
+                INSERT INTO messages (session_id, sender_type, message, message_type, created_at) 
+                VALUES (?, 'system', ?, 'system', NOW())
+            ");
+            $stmt->execute([$session['id'], $timeoutMessage]);
+            
+            // Notify WebSocket clients if they're still connected
+            if (isset($this->sessions[$session['session_id']])) {
+                $response = [
+                    'type' => 'session_closed',
+                    'session_id' => $session['session_id'],
+                    'message' => $timeoutMessage,
+                    'reason' => 'timeout'
+                ];
+                
+                foreach ($this->sessions[$session['session_id']] as $client) {
+                    $client['connection']->send(json_encode($response));
+                }
+                
+                // Remove from active WebSocket sessions
+                unset($this->sessions[$session['session_id']]);
+            }
+            
+            echo "Closed inactive session: {$session['session_id']} (user: {$session['customer_name']}, role: {$session['user_role']})\n";
+            
+        } catch (\Exception $e) {
+            echo "Error closing session {$session['session_id']}: " . $e->getMessage() . "\n";
+        }
+    }
+    
+    /**
+     * Start periodic cleanup task
+     * This should be called when the WebSocket server starts
+     */
+    public function startPeriodicCleanup()
+    {
+        // Run cleanup every 10 minutes
+        $this->cleanupTimer = Loop::get()->addPeriodicTimer(600, function() {
+            echo "Running periodic session cleanup...\n";
+            $this->cleanupInactiveSessions();
+        });
+        
+        // Also run an initial cleanup
+        echo "Running initial session cleanup...\n";
+        $this->cleanupInactiveSessions();
     }
 }

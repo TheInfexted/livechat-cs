@@ -1319,13 +1319,8 @@ body {
     flex-direction: column;
 }
 
-.customer-chat .date-separator {
-    order: 0; /* Ensure date separators appear in correct order */
-}
-
-.customer-chat .message {
-    order: 1; /* Messages appear after date separators */
-}
+/* Removed order properties that were causing all date separators to group together
+   Date separators and messages should be interleaved naturally in DOM order */
 
 /* Error handling styles for logged users */
 .chat-error {

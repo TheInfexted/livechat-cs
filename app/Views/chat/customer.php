@@ -136,6 +136,7 @@
     let externalEmail = '<?= $external_email ?? '' ?>';
     let isIframe = <?= $is_iframe ? 'true' : 'false' ?>;
     
+    
     // Load quick actions when page loads
     document.addEventListener('DOMContentLoaded', function() {
         if (sessionId) {
@@ -318,72 +319,172 @@
     function showStartNewChatInterface() {
         const chatInterface = document.getElementById('chatInterface');
         if (chatInterface) {
-            // Generate form HTML based on user role
-            let nameFieldHtml = '';
-            let roleFieldsHtml = '';
-            let statusMessageHtml = '';
-            
+            // For logged users, show simplified interface
             if (userRole === 'loggedUser' && (externalFullname || externalUsername)) {
-                // For logged users, show read-only name field
-                const displayName = externalFullname || externalUsername;
-                nameFieldHtml = `
-                    <div class="form-group">
-                        <label for="customerName">Your Name</label>
-                        <input type="text" id="customerName" name="customer_name" value="${displayName}" readonly style="background-color: #f0f0f0;">
-                        <small style="color: #666;">This information was provided by your system login.</small>
+                // Seamless experience for logged users - no form needed
+                chatInterface.innerHTML = `
+                    <div class="chat-start-form" style="text-align: center; padding: 30px;">
+                        <h4>Chat Session Ended</h4>
+                        <p style="color: #666; margin-bottom: 25px;">Thank you for contacting us. Your conversation has ended.</p>
+                        <p style="color: #28a745; font-size: 14px; margin-bottom: 20px;">
+                            ✓ Logged in as ${externalFullname || externalUsername}
+                        </p>
+                        <button type="button" class="btn btn-primary start-new-chat-btn-local" style="padding: 12px 24px; font-size: 16px;">
+                            Start New Chat
+                        </button>
                     </div>
                 `;
-                statusMessageHtml = `
-                    <p style="color: #28a745; font-size: 14px; margin-bottom: 15px;">
-                        ✓ You are logged in as a verified user
-                    </p>
-                `;
             } else {
-                // For anonymous users, show editable name field
-                nameFieldHtml = `
+                // For anonymous users, show the full form
+                const nameFieldHtml = `
                     <div class="form-group">
                         <label for="customerName">Your Name (Optional)</label>
                         <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
                     </div>
                 `;
+                
+                const roleFieldsHtml = `
+                    <input type="hidden" name="user_role" value="${userRole}">
+                    <input type="hidden" name="external_username" value="${externalUsername}">
+                    <input type="hidden" name="external_fullname" value="${externalFullname}">
+                    <input type="hidden" name="external_system_id" value="${externalSystemId}">
+                    <input type="hidden" name="api_key" value="${apiKey}">
+                    <input type="hidden" name="customer_phone" value="${customerPhone}">
+                `;
+                
+                chatInterface.innerHTML = `
+                    <div class="chat-start-form">
+                        <h4>Start a New Conversation</h4>
+                        <p style="color: #666; margin-bottom: 20px;">Your previous chat has ended. You can start a new conversation below:</p>
+                        <form id="startChatForm">
+                            ${roleFieldsHtml}
+                            ${nameFieldHtml}
+                            <div class="form-group">
+                                <label for="customerProblem">What do you need help with? *</label>
+                                <input type="text" id="customerProblem" name="chat_topic" required placeholder="Describe your issue or question...">
+                            </div>
+                            <div class="form-group">
+                                <label for="customerEmail">Email (Optional)</label>
+                                <input type="email" id="customerEmail" name="email" value="${externalEmail}">
+                            </div>
+                            <button type="submit" class="btn btn-primary">Start New Chat</button>
+                        </form>
+                    </div>
+                `;
             }
-            
-            // Add hidden fields for role information
-            roleFieldsHtml = `
-                <input type="hidden" name="user_role" value="${userRole}">
-                <input type="hidden" name="external_username" value="${externalUsername}">
-                <input type="hidden" name="external_fullname" value="${externalFullname}">
-                <input type="hidden" name="external_system_id" value="${externalSystemId}">
-                <input type="hidden" name="api_key" value="${apiKey}">
-                <input type="hidden" name="customer_phone" value="${customerPhone}">
-            `;
-            
+        }
+    }
+    
+    // Function to start new chat for logged users without form (local version)
+    function startNewChatForLoggedUserLocal() {
+        // Show loading state
+        const chatInterface = document.getElementById('chatInterface');
+        if (chatInterface) {
             chatInterface.innerHTML = `
-                <div class="chat-start-form">
-                    <h4>Start a New Conversation</h4>
-                    <p style="color: #666; margin-bottom: 20px;">Your previous chat has ended. You can start a new conversation below:</p>
-                    <form id="startChatForm">
-                        ${roleFieldsHtml}
-                        ${nameFieldHtml}
-                        <div class="form-group">
-                            <label for="customerProblem">What do you need help with? *</label>
-                            <input type="text" id="customerProblem" name="chat_topic" required placeholder="Describe your issue or question...">
-                        </div>
-                        <div class="form-group">
-                            <label for="customerEmail">Email (Optional)</label>
-                            ${userRole === 'loggedUser' && externalEmail ? 
-                                `<input type="email" id="customerEmail" name="email" value="${externalEmail}" readonly style="background-color: #f0f0f0;">
-                                <small style="color: #666;">This email was provided by your system login.</small>` :
-                                `<input type="email" id="customerEmail" name="email" value="${externalEmail}">`
-                            }
-                        </div>
-                        ${statusMessageHtml}
-                        <button type="submit" class="btn btn-primary">Start New Chat</button>
-                    </form>
+                <div class="chat-loading" style="text-align: center; padding: 40px;">
+                    <div class="loading-spinner"></div>
+                    <h4>Starting new chat session...</h4>
+                    <p class="loading-message">Please wait while we prepare your chat.</p>
                 </div>
             `;
         }
+        
+        // Create form data with existing user information
+        const formData = new FormData();
+        formData.append('user_role', userRole);
+        formData.append('external_username', externalUsername);
+        formData.append('external_fullname', externalFullname);
+        formData.append('external_system_id', externalSystemId);
+        formData.append('api_key', apiKey);
+        formData.append('customer_phone', customerPhone);
+        formData.append('customer_name', externalFullname || externalUsername);
+        formData.append('chat_topic', 'General Support'); // Default topic for logged users
+        formData.append('email', externalEmail);
+        
+        
+        // Start new session
+        fetch('/chat/start-session', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(result => {
+            if (result.success) {
+                sessionId = result.session_id;
+                currentSessionId = result.session_id;
+                
+                if (chatInterface) {
+                    chatInterface.innerHTML = `
+                        <div class="chat-window customer-chat" data-session-id="${result.session_id}">
+                            <div class="messages-container" id="messagesContainer">
+                                <div class="message system">
+                                    <p>Connecting to support...</p>
+                                </div>
+                            </div>
+                            
+                            <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                                <span></span>
+                                <span></span>
+                                <span></span>
+                            </div>
+                            
+                            <!-- Quick Action Toolbar -->
+                            <div class="quick-actions-toolbar" id="quickActionsToolbar">
+                                <div class="quick-actions-buttons" id="quickActionsButtons">
+                                    <!-- Quick action buttons will be loaded here -->
+                                </div>
+                            </div>
+                            
+                            <div class="chat-input-area">
+                                <form id="messageForm">
+                                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                                    <button type="submit" class="btn btn-send">Send</button>
+                                </form>
+                            </div>
+                        </div>
+                    `;
+                    
+                    // Initialize WebSocket and chat functionality
+                    initWebSocket();
+                    initializeMessageForm();
+                    
+                    // Load quick actions for the customer
+                    setTimeout(() => {
+                        fetchQuickActions();
+                        // Initialize typing functionality
+                        initializeTypingForCustomer();
+                        
+                        // Explicitly load chat history for the new session
+                        // This ensures history loads even if WebSocket 'connected' event doesn't fire
+                        if (typeof loadChatHistory === 'function') {
+                            loadChatHistory();
+                        }
+                    }, 1000);
+                }
+            } else {
+                // Show error and revert to previous state
+                alert(result.error || 'Failed to start new chat session');
+                showStartNewChatInterface();
+            }
+        })
+        .catch(error => {
+            alert('Failed to connect. Please try again.');
+            showStartNewChatInterface();
+        });
     }
+    
+    // Add event listener for Start New Chat button (local version)
+    document.addEventListener('click', function(e) {
+        if (e.target && e.target.classList.contains('start-new-chat-btn-local')) {
+            e.preventDefault();
+            startNewChatForLoggedUserLocal();
+        }
+    });
     
     // Override the handleWebSocketMessage function to include our typing indicator logic
     if (typeof handleWebSocketMessage !== 'undefined') {

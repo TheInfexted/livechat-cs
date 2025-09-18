@@ -76,4 +76,25 @@ class ChatModel extends Model
                     ->orderBy('updated_at', 'DESC')
                     ->first();
     }
+    
+    /**
+     * Get all active logged user sessions for monitoring
+     */
+    public function getActiveLoggedUserSessions()
+    {
+        return $this->where('user_role', 'loggedUser')
+                    ->whereIn('status', ['active', 'waiting'])
+                    ->orderBy('created_at', 'DESC')
+                    ->findAll();
+    }
+    
+    /**
+     * Get count of active logged user sessions
+     */
+    public function getActiveLoggedUserSessionsCount()
+    {
+        return $this->where('user_role', 'loggedUser')
+                    ->whereIn('status', ['active', 'waiting'])
+                    ->countAllResults();
+    }
 }

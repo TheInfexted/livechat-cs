@@ -229,15 +229,17 @@ async function loadChatHistory() {
         
         // For logged users, use the endpoint that includes historical messages
         if (typeof userRole !== 'undefined' && userRole === 'loggedUser' && 
-            (typeof externalUsername !== 'undefined' || typeof externalFullname !== 'undefined')) {
+            (externalUsername || externalFullname)) {
             const params = new URLSearchParams();
-            if (typeof externalUsername !== 'undefined' && externalUsername) {
+            // Include user_role parameter so backend knows to include history
+            params.append('user_role', userRole);
+            if (externalUsername) {
                 params.append('external_username', externalUsername);
             }
-            if (typeof externalFullname !== 'undefined' && externalFullname) {
+            if (externalFullname) {
                 params.append('external_fullname', externalFullname);
             }
-            if (typeof externalSystemId !== 'undefined' && externalSystemId) {
+            if (externalSystemId) {
                 params.append('external_system_id', externalSystemId);
             }
             
@@ -251,6 +253,8 @@ async function loadChatHistory() {
         if (container) {
             container.innerHTML = '';
             displayedMessages.clear(); // Clear displayed messages for fresh load
+            currentDateSeparator = null; // Reset date separator tracker
+            isLoadingHistory = true; // Disable automatic date separators during history loading
             
             // Extract customer name from the first customer message for future use
             if (!window.currentCustomerName && messages.length > 0) {
@@ -264,17 +268,21 @@ async function loadChatHistory() {
             let previousDate = null;
             let hasHistoricalMessages = false;
             
-            messages.forEach((message, index) => {
+            // Group messages by date first to ensure proper ordering
+            const messagesByDate = new Map();
+            
+            messages.forEach((message) => {
                 // Ensure each message has proper timestamp
                 message = ensureMessageTimestamp(message);
                 
                 // Skip if this is already a date separator from server
                 if (message.type === 'date_separator') {
-                    displayDateSeparator(message.date, message.id);
                     return;
                 }
 
-                const messageDate = new Date(message.created_at || message.timestamp).toDateString();
+                const messageTimestamp = message.created_at || message.timestamp;
+                const messageDate = new Date(messageTimestamp).toDateString();
+                const formattedDate = formatChatDate(messageTimestamp);
                 
                 // Check if this message is from a different session (historical)
                 const isHistoricalMessage = message.chat_session_id && message.chat_session_id !== currentSession;
@@ -284,23 +292,48 @@ async function loadChatHistory() {
                     hasHistoricalMessages = true;
                 }
                 
-                // Add date separator if date changed
-                if (previousDate !== messageDate) {
-                    displayDateSeparator(formatChatDate(message.created_at || message.timestamp));
-                    previousDate = messageDate;
-                }
-
-                // Display the message with special styling for historical messages
+                // Add special styling for historical messages
                 if (isHistoricalMessage) {
                     message._isHistorical = true;
                 }
-                displayMessage(message);
+                
+                // Group messages by date
+                if (!messagesByDate.has(messageDate)) {
+                    messagesByDate.set(messageDate, {
+                        formattedDate: formattedDate,
+                        messages: []
+                    });
+                }
+                messagesByDate.get(messageDate).messages.push(message);
+            });
+            
+            // Sort date groups chronologically and display them
+            const sortedDates = Array.from(messagesByDate.entries()).sort((a, b) => {
+                // Sort by the actual date, not the string
+                const dateA = new Date(a[0]);
+                const dateB = new Date(b[0]);
+                return dateA - dateB;
+            });
+            
+            // Now display messages in chronological order
+            sortedDates.forEach(([dateKey, dateGroup], groupIndex) => {
+                // Add date separator for this group
+                currentDateSeparator = displayDateSeparator(dateGroup.formattedDate);
+                
+                // Add all messages for this date
+                dateGroup.messages.forEach((message, msgIndex) => {
+                    displayMessage(message);
+                });
             });
             
             // Show a notification if historical messages were loaded
             if (hasHistoricalMessages && messages.length > 0) {
-                showHistoryLoadedNotification(messages.filter(msg => msg.chat_session_id !== currentSession).length);
+                const historicalCount = messages.filter(msg => msg.chat_session_id !== currentSession).length;
+                showHistoryLoadedNotification(historicalCount);
             }
+            
+            // Re-enable automatic date separators after history loading is complete
+            isLoadingHistory = false;
         }
     } catch (error) {
         // Error handling without console log
@@ -504,8 +537,7 @@ function displaySystemMessage(message) {
     }
     
     const messageDiv = document.createElement('div');
-    const baseClass = `message ${data.sender_type || 'system'}`;
-    messageDiv.className = data._isHistorical ? `${baseClass} historical` : baseClass;
+    messageDiv.className = 'message system';
     
     // Add proper date metadata to system messages
     messageDiv.dataset.messageDate = currentDateString;
@@ -558,7 +590,7 @@ function showChatClosedMessage() {
                     <h3>Chat Session Ended</h3>
                     <p>This chat session has been closed by the support team.</p>
                     <p>Thank you for contacting us!</p>
-                    <button class="btn btn-primary start-new-chat-btn" onclick="startNewChat()">
+                    <button class="btn btn-primary start-new-chat-btn-old" onclick="startNewChat()">
                         Start New Chat
                     </button>
                 </div>
@@ -596,70 +628,184 @@ function startNewChat() {
         const currentExternalFullname = typeof externalFullname !== 'undefined' ? externalFullname : '';
         const currentExternalSystemId = typeof externalSystemId !== 'undefined' ? externalSystemId : '';
         const currentApiKey = typeof apiKey !== 'undefined' ? apiKey : '';
+        const currentCustomerPhone = typeof customerPhone !== 'undefined' ? customerPhone : '';
+        const currentExternalEmail = typeof externalEmail !== 'undefined' ? externalEmail : '';
         
-        // Generate form HTML based on user role
-        let nameFieldHtml = '';
-        let roleFieldsHtml = '';
-        let statusMessageHtml = '';
-        
+        // For logged users, provide seamless experience
         if (currentUserRole === 'loggedUser' && (currentExternalFullname || currentExternalUsername)) {
-            // For logged users, show read-only name field
-            const displayName = currentExternalFullname || currentExternalUsername;
-            nameFieldHtml = `
-                <div class="form-group">
-                    <label for="customerName">Your Name</label>
-                    <input type="text" id="customerName" name="customer_name" value="${displayName}" readonly style="background-color: #f0f0f0;">
-                    <small style="color: #666;">This information was provided by your system login.</small>
+            // Show seamless restart interface
+            chatInterface.innerHTML = `
+                <div class="chat-start-form" style="text-align: center; padding: 30px;">
+                    <h4>Chat Session Ended</h4>
+                    <p style="color: #666; margin-bottom: 25px;">Thank you for contacting us. Your conversation has ended.</p>
+                    <p style="color: #28a745; font-size: 14px; margin-bottom: 20px;">
+                        ✓ Logged in as ${currentExternalFullname || currentExternalUsername}
+                    </p>
+                    <button type="button" class="btn btn-primary start-new-chat-btn-direct" 
+                           style="padding: 12px 24px; font-size: 16px;">
+                        Start New Chat
+                    </button>
                 </div>
             `;
-            statusMessageHtml = `
-                <p style="color: #28a745; font-size: 14px; margin-bottom: 15px;">
-                    ✓ You are logged in as a verified user
-                </p>
-            `;
+            
+            // Add event listener directly with closure to capture current variables
+            setTimeout(() => {
+                const button = chatInterface.querySelector('.start-new-chat-btn-direct');
+                if (button) {
+                    button.addEventListener('click', function(e) {
+                        e.preventDefault();
+                        
+                        startNewChatForLoggedUser(
+                            currentUserRole, 
+                            currentExternalUsername, 
+                            currentExternalFullname, 
+                            currentExternalSystemId, 
+                            currentApiKey, 
+                            currentCustomerPhone, 
+                            currentExternalEmail
+                        );
+                    });
+                }
+            }, 100); // Small delay to ensure DOM is updated
         } else {
-            // For anonymous users, show editable name field
-            nameFieldHtml = `
+            // For anonymous users, show the full form
+            const nameFieldHtml = `
                 <div class="form-group">
                     <label for="customerName">Your Name (Optional)</label>
                     <input type="text" id="customerName" name="customer_name" placeholder="Enter your name (or leave blank for Anonymous)">
                 </div>
             `;
+            
+            const roleFieldsHtml = `
+                <input type="hidden" name="user_role" value="${currentUserRole}">
+                <input type="hidden" name="external_username" value="${currentExternalUsername}">
+                <input type="hidden" name="external_fullname" value="${currentExternalFullname}">
+                <input type="hidden" name="external_system_id" value="${currentExternalSystemId}">
+                <input type="hidden" name="api_key" value="${currentApiKey}">
+                <input type="hidden" name="customer_phone" value="${currentCustomerPhone}">
+            `;
+            
+            chatInterface.innerHTML = `
+                <div class="chat-start-form">
+                    <h4>Start a New Chat Session</h4>
+                    <form id="startChatForm">
+                        ${roleFieldsHtml}
+                        ${nameFieldHtml}
+                        <div class="form-group">
+                            <label for="chatTopic">What do you need help with?</label>
+                            <input type="text" id="chatTopic" name="chat_topic" required placeholder="Describe your issue or question...">
+                        </div>
+                        <div class="form-group">
+                            <label for="email">Email (Optional)</label>
+                            <input type="email" id="email" name="email" value="${currentExternalEmail}">
+                        </div>
+                        <button type="submit" class="btn btn-primary">Start Chat</button>
+                    </form>
+                </div>
+            `;
         }
-        
-        // Add hidden fields for role information
-        roleFieldsHtml = `
-            <input type="hidden" name="user_role" value="${currentUserRole}">
-            <input type="hidden" name="external_username" value="${currentExternalUsername}">
-            <input type="hidden" name="external_fullname" value="${currentExternalFullname}">
-            <input type="hidden" name="external_system_id" value="${currentExternalSystemId}">
-            <input type="hidden" name="api_key" value="${currentApiKey}">
-            <input type="hidden" name="customer_phone" value="${typeof currentCustomerPhone !== 'undefined' ? currentCustomerPhone : ''}">
-        `;
-        
-        chatInterface.innerHTML = `
-            <div class="chat-start-form">
-                <h4>Start a New Chat Session</h4>
-                <form id="startChatForm">
-                    ${roleFieldsHtml}
-                    ${nameFieldHtml}
-                    <div class="form-group">
-                        <label for="chatTopic">What do you need help with?</label>
-                        <input type="text" id="chatTopic" name="chat_topic" required placeholder="Describe your issue or question...">
-                    </div>
-                    <div class="form-group">
-                        <label for="email">Email (Optional)</label>
-                        <input type="email" id="email" name="email">
-                    </div>
-                    ${statusMessageHtml}
-                    <button type="submit" class="btn btn-primary">Start Chat</button>
-                </form>
-            </div>
-        `;
-        
-        // Form submission will be handled by the global document event listener
     }
 }
+
+// Function to start new chat for logged users without form (global version)
+function startNewChatForLoggedUser(userRoleParam, externalUsernameParam, externalFullnameParam, externalSystemIdParam, apiKeyParam, customerPhoneParam, externalEmailParam) {
+    const chatInterface = document.getElementById('chatInterface');
+    
+    // Show loading state
+    if (chatInterface) {
+        chatInterface.innerHTML = `
+            <div class="chat-loading" style="text-align: center; padding: 40px;">
+                <div class="loading-spinner"></div>
+                <h4>Starting new chat session...</h4>
+                <p class="loading-message">Please wait while we prepare your chat.</p>
+            </div>
+        `;
+    }
+    
+    // Create form data with existing user information
+    const formData = new FormData();
+    formData.append('user_role', userRoleParam);
+    formData.append('external_username', externalUsernameParam);
+    formData.append('external_fullname', externalFullnameParam);
+    formData.append('external_system_id', externalSystemIdParam);
+    formData.append('api_key', apiKeyParam);
+    formData.append('customer_phone', customerPhoneParam);
+    formData.append('customer_name', externalFullnameParam || externalUsernameParam);
+    formData.append('chat_topic', 'General Support'); // Default topic for logged users
+    formData.append('email', externalEmailParam);
+    
+    
+    // Start new session
+    fetch('/chat/start-session', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.json();
+    })
+    .then(result => {
+        if (result.success) {
+            sessionId = result.session_id;
+            currentSessionId = result.session_id;
+            
+            if (chatInterface) {
+                chatInterface.innerHTML = `
+                    <div class="chat-window customer-chat" data-session-id="${result.session_id}">
+                        <div class="messages-container" id="messagesContainer">
+                            <div class="message system">
+                                <p>Connecting to support...</p>
+                            </div>
+                        </div>
+                        
+                        <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                        </div>
+                        
+                        <div class="chat-input-area">
+                            <form id="messageForm">
+                                <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
+                                <button type="submit" class="btn btn-send">Send</button>
+                            </form>
+                        </div>
+                    </div>
+                `;
+                
+                // Initialize WebSocket and chat functionality
+                initWebSocket();
+                
+                // Initialize the message form with a slight delay
+                setTimeout(() => {
+                    initializeMessageForm();
+                    
+                    // Load quick actions if available
+                    if (typeof fetchQuickActions === 'function') {
+                        fetchQuickActions();
+                    }
+                    
+                    // Initialize typing functionality if available
+                    if (typeof initializeTypingForCustomer === 'function') {
+                        initializeTypingForCustomer();
+                    }
+                }, 1000);
+            }
+        } else {
+            // Show error and revert to previous state
+            alert(result.error || 'Failed to start new chat session');
+            startNewChat(); // Fall back to regular start chat
+        }
+    })
+    .catch(error => {
+        alert('Failed to connect. Please try again.');
+        startNewChat(); // Fall back to regular start chat
+    });
+}
+
+// Old data attributes event listener removed - now using closure approach above
 
 // Initialize WebSocket connection
 let wsUrls = [
@@ -694,7 +840,6 @@ function initWebSocket() {
                     user_type: currentUserType,
                     user_id: currentUserId
                 };
-                
                 
                 ws.send(JSON.stringify(registerData));
             }
@@ -769,6 +914,7 @@ function handleWebSocketMessage(data) {
         case 'connected':
             const connectedSession = getSessionId();
             const connectedUserType = getUserType();
+            
             if (connectedSession) {
                 if (connectedUserType === 'customer') {
                     // Update the initial "Connecting to support..." message
@@ -1003,6 +1149,12 @@ document.addEventListener('submit', async function(e) {
                         if (typeof fetchQuickActions === 'function') {
                             fetchQuickActions();
                         }
+                        
+                        // Explicitly load chat history for the new session
+                        // This ensures history loads even if WebSocket 'connected' event doesn't fire
+                        if (typeof loadChatHistory === 'function') {
+                            loadChatHistory();
+                        }
                     }, 1000);
                 }
             } else {
@@ -1173,19 +1325,24 @@ function displayMessage(data) {
     // Ensure message has proper timestamp
     data = ensureMessageTimestamp(data);
     
-    // Check if we need to add a date separator before this message
-    const existingMessages = container.querySelectorAll('.message:not(.date-separator)');
-    if (existingMessages.length > 0) {
-        const lastMessage = existingMessages[existingMessages.length - 1];
-        const lastMessageDate = lastMessage.dataset.messageDate;
-        const currentMessageDate = new Date(data.created_at || data.timestamp || Date.now()).toDateString();
-        
-        if (lastMessageDate !== currentMessageDate) {
-            displayDateSeparator(formatChatDate(data.created_at || data.timestamp));
+    // Only add automatic date separators if not loading history
+    // During history loading, date separators are managed by loadChatHistory()
+    if (!isLoadingHistory) {
+        // Check if we need to add a date separator before this message
+        const existingMessages = container.querySelectorAll('.message:not(.date-separator)');
+        if (existingMessages.length > 0) {
+            const lastMessage = existingMessages[existingMessages.length - 1];
+            const lastMessageDate = lastMessage.dataset.messageDate;
+            const messageTimestamp = data.created_at || data.timestamp || Date.now();
+            const currentMessageDate = new Date(messageTimestamp).toDateString();
+            
+            if (lastMessageDate !== currentMessageDate) {
+                currentDateSeparator = displayDateSeparator(formatChatDate(messageTimestamp));
+            }
+        } else {
+            // First message, always show date separator
+            currentDateSeparator = displayDateSeparator(formatChatDate(data.created_at || data.timestamp));
         }
-    } else {
-        // First message, always show date separator
-        displayDateSeparator(formatChatDate(data.created_at || data.timestamp));
     }
     
     // Use the same ID generation logic as refreshMessagesForSession
@@ -1201,8 +1358,9 @@ function displayMessage(data) {
     const messageDiv = document.createElement('div');
     
     // Set the message date for future date separator checks
+    const messageTimestamp = data.created_at || data.timestamp || Date.now();
     messageDiv.dataset.messageId = data.id || messageId;
-    messageDiv.dataset.messageDate = new Date(data.created_at || data.timestamp || Date.now()).toDateString();
+    messageDiv.dataset.messageDate = new Date(messageTimestamp).toDateString();
     
     // Handle system messages specially - check for message_type = 'system'
     if (data.message_type === 'system') {
@@ -1255,7 +1413,7 @@ function displayMessage(data) {
         
         const time = document.createElement('div');
         time.className = 'message-time';
-        time.textContent = formatTime(data.timestamp || data.created_at);
+        time.textContent = formatTime(data.created_at || data.timestamp);
         
         bubble.appendChild(time);
         messageContent.appendChild(bubble);
@@ -1265,29 +1423,50 @@ function displayMessage(data) {
         messageDiv.appendChild(messageContent);
     }
     
-    container.appendChild(messageDiv);
+    // Insert message after the current date separator, not at the end
+    if (currentDateSeparator && currentDateSeparator.parentNode === container) {
+        // Find the insertion point: after the date separator and any existing messages for this date
+        let insertAfter = currentDateSeparator;
+        let nextSibling = insertAfter.nextSibling;
+        
+        // Find the last message that belongs to the same date group
+        while (nextSibling && 
+               nextSibling.classList && 
+               nextSibling.classList.contains('message') && 
+               !nextSibling.classList.contains('date-separator')) {
+            insertAfter = nextSibling;
+            nextSibling = nextSibling.nextSibling;
+        }
+        
+        // Insert after the last message in this date group
+        container.insertBefore(messageDiv, insertAfter.nextSibling);
+    } else {
+        // Fallback to append if no current separator
+        container.appendChild(messageDiv);
+    }
+    
     container.scrollTop = container.scrollHeight;
 }
+
+// Track the current date separator for proper message insertion
+let currentDateSeparator = null;
+// Flag to control automatic date separator creation during history loading
+let isLoadingHistory = false;
 
 //Date separator functions for customers
 function displayDateSeparator(dateString, id = null) {
     const container = safeGetElement('messagesContainer');
-    if (!container) return;
+    if (!container) return null;
 
     // Create a unique identifier for this date
     const dateId = id || `date_${dateString.replace(/[^a-zA-Z0-9]/g, '_')}`;
     
-    // Check if date separator already exists for this specific date
-    if (container.querySelector(`[data-separator-id="${dateId}"]`)) {
-        return; // Already exists, don't add another
-    }
-
-    // Also check by date string content to prevent duplicates
-    const existingSeparators = container.querySelectorAll('.date-separator .date-badge');
-    for (let separator of existingSeparators) {
-        if (separator.textContent.trim() === dateString.trim()) {
-            return; // Already exists, don't add another
-        }
+    // Check if date separator already exists for this specific date ID only
+    // Remove the content-based check as it might interfere with proper ordering
+    const existingSeparator = container.querySelector(`[data-separator-id="${dateId}"]`);
+    if (existingSeparator) {
+        currentDateSeparator = existingSeparator;
+        return existingSeparator; // Already exists, don't add another
     }
 
     // Determine date type for styling
@@ -1306,10 +1485,15 @@ function displayDateSeparator(dateString, id = null) {
     
     container.appendChild(separatorDiv);
     
+    // Update the current date separator tracker
+    currentDateSeparator = separatorDiv;
+    
     // Remove animation class after animation completes
     setTimeout(() => {
         separatorDiv.classList.remove('new');
     }, 300);
+    
+    return separatorDiv;
 }
 
 function formatChatDate(timestamp) {
@@ -1362,15 +1546,17 @@ function addDateSeparatorIfNeeded(newMessage) {
     const lastMessage = container.querySelector('.message:last-child:not(.date-separator)');
     if (!lastMessage) {
         // First message, always add date separator
-        displayDateSeparator(formatChatDate(newMessage.created_at || newMessage.timestamp));
+        const messageTimestamp = newMessage.created_at || newMessage.timestamp;
+        displayDateSeparator(formatChatDate(messageTimestamp));
         return true;
     }
 
     const lastMessageDate = lastMessage.dataset.messageDate;
-    const newMessageDate = new Date(newMessage.created_at || newMessage.timestamp || Date.now()).toDateString();
+    const messageTimestamp = newMessage.created_at || newMessage.timestamp || Date.now();
+    const newMessageDate = new Date(messageTimestamp).toDateString();
 
     if (lastMessageDate !== newMessageDate) {
-        displayDateSeparator(formatChatDate(newMessage.created_at || newMessage.timestamp));
+        displayDateSeparator(formatChatDate(messageTimestamp));
         return true;
     }
 
@@ -1449,8 +1635,11 @@ function formatTime(timestamp) {
 
 // Helper function to ensure message has proper timestamp
 function ensureMessageTimestamp(message) {
-    if (!message.timestamp || message.timestamp === 'Invalid Date') {
-        // If no timestamp, use current time
+    // Prefer created_at from database over timestamp
+    if (message.created_at) {
+        message.timestamp = message.created_at;
+    } else if (!message.timestamp || message.timestamp === 'Invalid Date') {
+        // Only use current time if no timestamp at all
         message.timestamp = new Date().toISOString();
     }
     return message;
