@@ -357,8 +357,8 @@ class ChatServer implements MessageComponentInterface
             }
         }
         
-        // Insert the system message into database
-        $systemMessage = $agentName . ' has joined the chat';
+        // Insert the system message into database with generic message
+        $systemMessage = 'An agent has joined the chat';
         $stmt = $this->pdo->prepare("
             INSERT INTO messages (session_id, sender_type, sender_id, message, message_type, created_at) 
             VALUES (?, 'system', NULL, ?, 'system', NOW())
@@ -402,19 +402,6 @@ class ChatServer implements MessageComponentInterface
                 echo "Sent system message to $sentCount connections\n";
             } else {
                 echo "No connections found for session: $sessionId\n";
-            }
-        }
-        
-        // Also send the original agent_assigned message for backward compatibility
-        $response = [
-            'type' => 'agent_assigned',
-            'session_id' => $sessionId,
-            'message' => $systemMessage
-        ];
-        
-        if (isset($this->sessions[$sessionId])) {
-            foreach ($this->sessions[$sessionId] as $client) {
-                $client['connection']->send(json_encode($response));
             }
         }
         
