@@ -330,8 +330,22 @@ class ChatController extends General
     
     public function getMessages($sessionId)
     {
-        $messages = $this->messageModel->getSessionMessages($sessionId);
-        return $this->jsonResponse($messages);
+        if (!$sessionId) {
+            return $this->jsonResponse(['error' => 'Session ID is required'], 400);
+        }
+        
+        try {
+            // Use the correct MongoMessageModel class
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $messages = $mongoModel->getSessionMessages($sessionId);
+            return $this->jsonResponse([
+                'success' => true,
+                'messages' => $messages
+            ]);
+        } catch (\Exception $e) {
+            error_log('Error getting messages: ' . $e->getMessage());
+            return $this->jsonResponse(['error' => 'Failed to load messages'], 500);
+        }
     }
     
     /**
@@ -354,15 +368,38 @@ class ChatController extends General
             $includeHistory = true;
         }
         
-        $messages = $this->messageModel->getSessionMessagesWithHistory(
-            $sessionId, 
-            $includeHistory, 
-            $externalUsername, 
-            $externalFullname, 
-            $externalSystemId
-        );
-        
-        return $this->jsonResponse($messages);
+        try {
+            // Use the correct MongoMessageModel class
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $result = $mongoModel->getSessionMessagesWithHistory(
+                $sessionId, 
+                $includeHistory, 
+                $externalUsername, 
+                $externalFullname, 
+                $externalSystemId
+            );
+            
+            // Check if result contains debug info
+            if (is_array($result) && isset($result['messages']) && isset($result['debug'])) {
+                return $this->jsonResponse([
+                    'messages' => $result['messages'],
+                    'debug' => $result['debug']
+                ]);
+            }
+            
+            return $this->jsonResponse($result);
+        } catch (\Exception $e) {
+            error_log('Error getting messages with history: ' . $e->getMessage());
+            // Fallback to basic messages on error
+            try {
+                $mongoModel = new \App\Models\MongoMessageModel();
+                $result = $mongoModel->getSessionMessages($sessionId);
+                return $this->jsonResponse($result);
+            } catch (\Exception $fallbackError) {
+                error_log('Fallback also failed: ' . $fallbackError->getMessage());
+                return $this->jsonResponse(['error' => 'Failed to load messages'], 500);
+            }
+        }
     }
     
     /**
@@ -381,7 +418,9 @@ class ChatController extends General
         }
         
         try {
-            $messages = $this->messageModel->getUserChatHistory(
+            // Use the correct MongoMessageModel class
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $messages = $mongoModel->getUserChatHistory(
                 $externalUsername, 
                 $externalFullname, 
                 $externalSystemId, 
@@ -398,6 +437,29 @@ class ChatController extends General
         } catch (Exception $e) {
             error_log('Error loading chat history: ' . $e->getMessage());
             return $this->jsonResponse(['error' => 'Failed to load chat history'], 500);
+        }
+    }
+    
+    /**
+     * Test MongoDB connection - debugging endpoint
+     */
+    public function testMongoDB()
+    {
+        try {
+            $mongoModel = new \App\Models\MongoMessageModel();
+            
+            return $this->jsonResponse([
+                'success' => true,
+                'message' => 'MongoDB connection successful',
+                'timestamp' => date('Y-m-d H:i:s')
+            ]);
+            
+        } catch (Exception $e) {
+            return $this->jsonResponse([
+                'success' => false,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ], 500);
         }
     }
     

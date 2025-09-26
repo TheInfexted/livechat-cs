@@ -5,6 +5,8 @@ namespace App\Libraries;
 use Ratchet\MessageComponentInterface;
 use Ratchet\ConnectionInterface;
 use React\EventLoop\Loop;
+use MongoDB\Client as MongoClient;
+use MongoDB\BSON\UTCDateTime;
 
 class ChatServer implements MessageComponentInterface
 {
@@ -12,14 +14,20 @@ class ChatServer implements MessageComponentInterface
     protected $sessions;
     protected $pdo;
     protected $cleanupTimer;
+    protected $mongoClient;
+    protected $mongoDatabase;
+    protected $mongoConfig;
     
     public function __construct()
     {
         $this->clients = new \SplObjectStorage;
         $this->sessions = [];
         
-        // Initialize direct PDO connection
+        // Initialize direct PDO connection for MySQL (sessions)
         $this->connectDatabase();
+        
+        // Initialize MongoDB connection for messages
+        $this->connectMongoDB();
     }
     
     private function connectDatabase()
@@ -43,6 +51,41 @@ class ChatServer implements MessageComponentInterface
         }
     }
     
+    private function connectMongoDB()
+    {
+        try {
+            $this->mongoConfig = [
+                'hostname' => '127.0.0.1',
+                'port' => 27017,
+                'username' => 'livechat_messages',
+                'password' => 'Y845akkHeYzFC8y5',
+                'database' => 'livechat_messages'
+            ];
+            
+            $uri = sprintf(
+                'mongodb://%s:%s@%s:%d/%s',
+                $this->mongoConfig['username'],
+                $this->mongoConfig['password'],
+                $this->mongoConfig['hostname'],
+                $this->mongoConfig['port'],
+                $this->mongoConfig['database']
+            );
+            
+            $this->mongoClient = new MongoClient($uri, [
+                'connectTimeoutMS' => 5000,
+                'socketTimeoutMS' => 10000,
+            ]);
+            
+            $this->mongoDatabase = $this->mongoClient->selectDatabase($this->mongoConfig['database']);
+            
+            echo "MongoDB connection established\n";
+        } catch (\Exception $e) {
+            echo "MongoDB connection failed: " . $e->getMessage() . "\n";
+            $this->mongoClient = null;
+            $this->mongoDatabase = null;
+        }
+    }
+    
     private function ensureDatabaseConnection()
     {
         if (!$this->pdo) {
@@ -57,6 +100,57 @@ class ChatServer implements MessageComponentInterface
             echo "Database connection lost, reconnecting...\n";
             $this->connectDatabase();
         }
+        
+        // Also ensure MongoDB connection
+        if (!$this->mongoClient || !$this->mongoDatabase) {
+            $this->connectMongoDB();
+        }
+    }
+    
+    /**
+     * Get client username from API key for MongoDB collection routing
+     */
+    private function getClientUsernameFromSession($sessionData)
+    {
+        if (!isset($sessionData['api_key'])) {
+            return 'unknown';
+        }
+        
+        try {
+            $stmt = $this->pdo->prepare("
+                SELECT c.username 
+                FROM api_keys ak 
+                JOIN clients c ON c.id = ak.client_id 
+                WHERE ak.api_key = ?
+            ");
+            $stmt->execute([$sessionData['api_key']]);
+            $result = $stmt->fetch();
+            
+            if ($result) {
+                // Sanitize username for collection name
+                $sanitized = preg_replace('/[^a-zA-Z0-9_]/', '', $result['username']);
+                return strtolower($sanitized);
+            }
+        } catch (\Exception $e) {
+            echo "Error getting client username: " . $e->getMessage() . "\n";
+        }
+        
+        return 'unknown';
+    }
+    
+    /**
+     * Get MongoDB collection for a session
+     */
+    private function getMongoCollection($sessionData)
+    {
+        if (!$this->mongoDatabase) {
+            return null;
+        }
+        
+        $clientUsername = $this->getClientUsernameFromSession($sessionData);
+        $collectionName = $clientUsername === 'unknown' ? 'unknown_messages' : $clientUsername . '_messages';
+        
+        return $this->mongoDatabase->selectCollection($collectionName);
     }
     
     public function onOpen(ConnectionInterface $conn)
@@ -117,9 +211,6 @@ class ChatServer implements MessageComponentInterface
             'user_id' => $data['user_id'] ?? null
         ];
         
-        // Debug: Log connection registration
-        echo "Registered connection {$conn->resourceId} as {$userType} for session {$sessionId}\n";
-        echo "Total connections for session {$sessionId}: " . count($this->sessions[$sessionId]) . "\n";
         
         // Send connection success
         $conn->send(json_encode([
@@ -170,25 +261,45 @@ class ChatServer implements MessageComponentInterface
             }
         }
         
-        // Save message to database
-        $stmt = $this->pdo->prepare("
-            INSERT INTO messages (session_id, sender_type, sender_id, sender_user_type, message, created_at) 
-            VALUES (?, ?, ?, ?, ?, NOW())
-        ");
-        $result = $stmt->execute([$chatSession['id'], $senderType, $senderId, $senderUserType, $message]);
-        
-        if (!$result) {
+        // Save message to MongoDB
+        $collection = $this->getMongoCollection($chatSession);
+        if (!$collection) {
+            echo "Failed to get MongoDB collection for session {$sessionId}\n";
             return;
         }
         
-        $messageId = $this->pdo->lastInsertId();
+        $clientUsername = $this->getClientUsernameFromSession($chatSession);
+        $utcDateTime = new UTCDateTime();
         
-        // Get the actual timestamp from the database
-        $stmt = $this->pdo->prepare("
-            SELECT created_at FROM messages WHERE id = ?
-        ");
-        $stmt->execute([$messageId]);
-        $timestamp = $stmt->fetchColumn();
+        $document = [
+            'session_id' => $sessionId,
+            'mysql_session_id' => $chatSession['id'],
+            'sender_type' => $senderType,
+            'sender_id' => $senderId,
+            'sender_user_type' => $senderUserType,
+            'message' => $message,
+            'message_type' => 'text',
+            'file_path' => null,
+            'file_name' => null,
+            'is_read' => false,
+            'created_at' => $utcDateTime,
+            'client_username' => $clientUsername,
+            'api_key' => $chatSession['api_key']
+        ];
+        
+        try {
+            $result = $collection->insertOne($document);
+            $messageId = (string) $result->getInsertedId();
+            
+            // Convert UTC to Malaysia time (GMT+8) for consistent display
+            $utcDateTimeObj = $utcDateTime->toDateTime();
+            $malaysiaTz = new \DateTimeZone('Asia/Kuala_Lumpur');
+            $utcDateTimeObj->setTimezone($malaysiaTz);
+            $timestamp = $utcDateTimeObj->format('Y-m-d H:i:s');
+        } catch (\Exception $e) {
+            echo "Failed to save message to MongoDB: " . $e->getMessage() . "\n";
+            return;
+        }
         
         // Get sender name based on sender type and ID
         $senderName = null;
@@ -357,23 +468,49 @@ class ChatServer implements MessageComponentInterface
             }
         }
         
-        // Insert the system message into database with generic message
+        // Insert the system message into MongoDB
         $systemMessage = 'An agent has joined the chat';
-        $stmt = $this->pdo->prepare("
-            INSERT INTO messages (session_id, sender_type, sender_id, message, message_type, created_at) 
-            VALUES (?, 'system', NULL, ?, 'system', NOW())
-        ");
-        $result = $stmt->execute([$chatSession['id'], $systemMessage]);
+        $collection = $this->getMongoCollection($chatSession);
         
-        if ($result) {
-            $messageId = $this->pdo->lastInsertId();
+        if ($collection) {
+            $clientUsername = $this->getClientUsernameFromSession($chatSession);
+            $utcDateTime = new UTCDateTime();
             
-            // Get the actual timestamp from the database
-            $stmt = $this->pdo->prepare("
-                SELECT created_at FROM messages WHERE id = ?
-            ");
-            $stmt->execute([$messageId]);
-            $timestamp = $stmt->fetchColumn();
+            $document = [
+                'session_id' => $sessionId,
+                'mysql_session_id' => $chatSession['id'],
+                'sender_type' => 'system',
+                'sender_id' => null,
+                'sender_user_type' => null,
+                'message' => $systemMessage,
+                'message_type' => 'system',
+                'file_path' => null,
+                'file_name' => null,
+                'is_read' => false,
+                'created_at' => $utcDateTime,
+                'client_username' => $clientUsername,
+                'api_key' => $chatSession['api_key']
+            ];
+            
+            try {
+                $result = $collection->insertOne($document);
+                $messageId = (string) $result->getInsertedId();
+                
+                // Convert UTC to Malaysia time (GMT+8) for consistent display
+                $utcDateTimeObj = $utcDateTime->toDateTime();
+                $malaysiaTz = new \DateTimeZone('Asia/Kuala_Lumpur');
+                $utcDateTimeObj->setTimezone($malaysiaTz);
+                $timestamp = $utcDateTimeObj->format('Y-m-d H:i:s');
+            } catch (\Exception $e) {
+                echo "Failed to save system message to MongoDB: " . $e->getMessage() . "\n";
+                return;
+            }
+        } else {
+            echo "Failed to get MongoDB collection for system message\n";
+            return;
+        }
+        
+        if ($messageId) {
             
             // Send system message via WebSocket with proper message format
             $messageResponse = [
@@ -387,21 +524,12 @@ class ChatServer implements MessageComponentInterface
                 'created_at' => $timestamp
             ];
             
-            // Debug: Log connections for this session
-            echo "Broadcasting system message to session: $sessionId\n";
-            echo "Connections in session: " . (isset($this->sessions[$sessionId]) ? count($this->sessions[$sessionId]) : 0) . "\n";
             
             // Send the system message to all connections in this session
             if (isset($this->sessions[$sessionId])) {
-                $sentCount = 0;
-                foreach ($this->sessions[$sessionId] as $resourceId => $client) {
-                    echo "Sending to connection $resourceId (type: {$client['type']})\n";
+                foreach ($this->sessions[$sessionId] as $client) {
                     $client['connection']->send(json_encode($messageResponse));
-                    $sentCount++;
                 }
-                echo "Sent system message to $sentCount connections\n";
-            } else {
-                echo "No connections found for session: $sessionId\n";
             }
         }
         
@@ -583,19 +711,41 @@ class ChatServer implements MessageComponentInterface
                 
                 // Check if the message contains the keyword
                 if (strpos($messageToCheck, $keyword) !== false) {
-                    // Save automated response to database as agent
-                    $autoResponseStmt = $this->pdo->prepare("
-                        INSERT INTO messages (session_id, sender_type, sender_id, sender_user_type, message, created_at) 
-                        VALUES (?, 'agent', NULL, NULL, ?, NOW())
-                    ");
-                    $autoResponseStmt->execute([$chatSession['id'], $keywordResponse['response']]);
+                    // Save automated response to MongoDB as agent
+                    $collection = $this->getMongoCollection($chatSession);
                     
-                    $autoMessageId = $this->pdo->lastInsertId();
-                    
-                    // Get timestamp
-                    $timestampStmt = $this->pdo->prepare("SELECT created_at FROM messages WHERE id = ?");
-                    $timestampStmt->execute([$autoMessageId]);
-                    $timestamp = $timestampStmt->fetchColumn();
+                    if ($collection) {
+                        $clientUsername = $this->getClientUsernameFromSession($chatSession);
+                        $utcDateTime = new UTCDateTime();
+                        
+                        $document = [
+                            'session_id' => $sessionId,
+                            'mysql_session_id' => $chatSession['id'],
+                            'sender_type' => 'agent',
+                            'sender_id' => null,
+                            'sender_user_type' => 'autobot',
+                            'message' => $keywordResponse['response'],
+                            'message_type' => 'text',
+                            'file_path' => null,
+                            'file_name' => null,
+                            'is_read' => false,
+                            'created_at' => $utcDateTime,
+                            'client_username' => $clientUsername,
+                            'api_key' => $chatSession['api_key']
+                        ];
+                        
+                        try {
+                            $result = $collection->insertOne($document);
+                            $autoMessageId = (string) $result->getInsertedId();
+                            $timestamp = $utcDateTime->toDateTime()->format('Y-m-d H:i:s');
+                        } catch (\Exception $e) {
+                            echo "Failed to save automated response to MongoDB: " . $e->getMessage() . "\n";
+                            continue; // Skip to next keyword
+                        }
+                    } else {
+                        echo "Failed to get MongoDB collection for automated response\n";
+                        continue; // Skip to next keyword
+                    }
                     
                     // Prepare automated response
                     $autoResponse = [
@@ -725,13 +875,44 @@ class ChatServer implements MessageComponentInterface
             ");
             $stmt->execute([$session['id']]);
             
-            // Add system message about timeout
+            // Add system message about timeout to MongoDB
             $timeoutMessage = 'Session automatically closed due to inactivity';
-            $stmt = $this->pdo->prepare("
-                INSERT INTO messages (session_id, sender_type, message, message_type, created_at) 
-                VALUES (?, 'system', ?, 'system', NOW())
-            ");
-            $stmt->execute([$session['id'], $timeoutMessage]);
+            
+            // Get session data for MongoDB collection routing
+            $sessionStmt = $this->pdo->prepare("SELECT * FROM chat_sessions WHERE id = ?");
+            $sessionStmt->execute([$session['id']]);
+            $chatSession = $sessionStmt->fetch();
+            
+            if ($chatSession) {
+                $collection = $this->getMongoCollection($chatSession);
+                
+                if ($collection) {
+                    $clientUsername = $this->getClientUsernameFromSession($chatSession);
+                    $utcDateTime = new UTCDateTime();
+                    
+                    $document = [
+                        'session_id' => $session['session_id'],
+                        'mysql_session_id' => $session['id'],
+                        'sender_type' => 'system',
+                        'sender_id' => null,
+                        'sender_user_type' => null,
+                        'message' => $timeoutMessage,
+                        'message_type' => 'system',
+                        'file_path' => null,
+                        'file_name' => null,
+                        'is_read' => false,
+                        'created_at' => $utcDateTime,
+                        'client_username' => $clientUsername,
+                        'api_key' => $chatSession['api_key']
+                    ];
+                    
+                    try {
+                        $collection->insertOne($document);
+                    } catch (\Exception $e) {
+                        echo "Failed to save timeout message to MongoDB: " . $e->getMessage() . "\n";
+                    }
+                }
+            }
             
             // Notify WebSocket clients if they're still connected
             if (isset($this->sessions[$session['session_id']])) {

@@ -21,6 +21,7 @@ $routes->post('/chat/canned-response', 'ChatController::sendCannedResponse');
 $routes->get('/chat/customer-history/(:segment)', 'ChatController::getCustomerHistory/$1');
 $routes->get('/chat/quick-actions', 'ChatController::getQuickActions');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
+$routes->get('/chat/test-mongodb', 'ChatController::testMongoDB');
 
 // Real-time notifications (for WebSocket fallback)
 $routes->group('api/notifications', function($routes) {

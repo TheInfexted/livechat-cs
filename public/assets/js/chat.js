@@ -221,7 +221,9 @@ async function checkSessionStatus() {
 
 async function loadChatHistory() {
     const currentSession = getSessionId();
-    if (!currentSession) return;
+    if (!currentSession) {
+        return;
+    }
     
     try {
         // Check if this is a logged user with chat history enabled
@@ -231,7 +233,6 @@ async function loadChatHistory() {
         if (typeof userRole !== 'undefined' && userRole === 'loggedUser' && 
             (externalUsername || externalFullname)) {
             const params = new URLSearchParams();
-            // Include user_role parameter so backend knows to include history
             params.append('user_role', userRole);
             if (externalUsername) {
                 params.append('external_username', externalUsername);
@@ -247,7 +248,31 @@ async function loadChatHistory() {
         }
         
         const response = await fetch(messagesUrl);
-        const messages = await response.json();
+        const apiResponse = await response.json();
+        
+        // Handle different response formats and extract debug info
+        let messages = apiResponse;
+        let debugInfo = null;
+        
+        if (apiResponse && typeof apiResponse === 'object') {
+            if (apiResponse.messages) {
+                messages = apiResponse.messages;
+                debugInfo = apiResponse.debug;
+            } else if (Array.isArray(apiResponse)) {
+                messages = apiResponse;
+            } else {
+                console.error('❌ Unexpected response format:', apiResponse);
+                messages = [];
+            }
+        } else if (Array.isArray(apiResponse)) {
+            messages = apiResponse;
+        } else {
+            console.error('❌ Unexpected response format:', apiResponse);
+            messages = [];
+        }
+        
+        // Debug info available for troubleshooting if needed
+        
         
         const container = document.getElementById('messagesContainer');
         if (container) {
@@ -336,7 +361,7 @@ async function loadChatHistory() {
             isLoadingHistory = false;
         }
     } catch (error) {
-        // Error handling without console log
+        console.error('❌ Error loading chat history:', error.message);
     }
 }
 
@@ -1925,6 +1950,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                 // Wait a moment for WebSocket to connect before initializing form
                 setTimeout(() => {
                     initializeMessageForm();
+                    
+                    // CRITICAL FIX: Load chat history directly on page refresh
+                    // Don't wait only for WebSocket 'connected' event
+                    loadChatHistory();
                 }, 500);
             }
         }

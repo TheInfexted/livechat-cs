@@ -159,6 +159,23 @@ class Database extends Config
     //    ];
 
     /**
+     * MongoDB connection for message storage (matching ChatServer config)
+     *
+     * @var array<string, mixed>
+     */
+    public array $mongodb = [
+        'hostname' => '127.0.0.1',
+        'port'     => 27017,
+        'username' => 'livechat_messages',
+        'password' => 'Y845akkHeYzFC8y5',
+        'database' => 'livechat_messages',
+        'options'  => [
+            'connectTimeoutMS' => 5000,
+            'socketTimeoutMS'  => 10000
+        ]
+    ];
+
+    /**
      * This database connection is used when running PHPUnit database tests.
      *
      * @var array<string, mixed>
