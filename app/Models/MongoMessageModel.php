@@ -208,8 +208,8 @@ class MongoMessageModel
                     'message' => $message['message'],
                     'message_type' => $message['message_type'] ?? 'text',
                     'is_read' => $message['is_read'] ?? false,
-                    'created_at' => $message['created_at']->toDateTime()->format('Y-m-d H:i:s'),
-                    'timestamp' => $message['created_at']->toDateTime()->format('Y-m-d H:i:s')
+                    'created_at' => $this->convertToMalaysiaTime($message['created_at']),
+                    'timestamp' => $this->convertToMalaysiaTime($message['created_at'])
                 ];
             }
             
@@ -317,7 +317,7 @@ class MongoMessageModel
                     'message' => $message['message'],
                     'message_type' => $message['message_type'] ?? 'text',
                     'is_read' => $message['is_read'] ?? false,
-                    'created_at' => $message['created_at']->toDateTime()->format('Y-m-d H:i:s'),
+                    'created_at' => $this->convertToMalaysiaTime($message['created_at']),
                     'chat_session_id' => $session ? $session['session_id'] : null,
                     'customer_name' => $session ? $session['customer_name'] : null,
                     'customer_fullname' => $session ? $session['customer_fullname'] : null
@@ -362,6 +362,14 @@ class MongoMessageModel
             error_log('Failed to mark messages as read in MongoDB: ' . $e->getMessage());
             return false;
         }
+    }
+    
+    /**
+     * Convert MongoDB UTCDateTime to Malaysia time string
+     */
+    private function convertToMalaysiaTime($mongoDate)
+    {
+        return $mongoDate->toDateTime()->setTimezone(new \DateTimeZone('Asia/Kuala_Lumpur'))->format('Y-m-d H:i:s');
     }
     
     /**
