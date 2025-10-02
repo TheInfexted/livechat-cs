@@ -25,8 +25,8 @@ class ChatFileModel extends Model
     public function deleteFile($fileId)
     {
         $file = $this->find($fileId);
-        if ($file && file_exists(WRITEPATH . $file['file_path'])) {
-            unlink(WRITEPATH . $file['file_path']);
+        if ($file && file_exists(ROOTPATH . $file['file_path'])) {
+            unlink(ROOTPATH . $file['file_path']);
         }
         return $this->delete($fileId);
     }

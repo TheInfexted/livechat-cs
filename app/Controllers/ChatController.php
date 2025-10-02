@@ -47,11 +47,9 @@ class ChatController extends General
                     
                     if ($sessionBelongsToUser) {
                         $validSession = $sessionId;
-                        error_log('DEBUG - Validated existing PHP session for logged user: ' . $sessionId);
                     } else {
                         // Session doesn't belong to this user, clear it
                         $this->session->remove('chat_session_id');
-                        error_log('DEBUG - Cleared PHP session that does not belong to current logged user');
                     }
                 } else {
                     // For anonymous users or when no identity is provided, session is valid
@@ -60,11 +58,6 @@ class ChatController extends General
             } else {
                 // Clear invalid session from PHP session
                 $this->session->remove('chat_session_id');
-                if ($chatSession) {
-                    error_log('DEBUG - Cleared closed session from PHP session: ' . $sessionId);
-                } else {
-                    error_log('DEBUG - Cleared non-existent session from PHP session: ' . $sessionId);
-                }
             }
         }
         
@@ -94,8 +87,6 @@ class ChatController extends General
                     // Update PHP session to track this resumed session
                     $this->session->set('chat_session_id', $validSession);
                     $this->session->set('user_role', 'loggedUser');
-                    
-                    error_log('DEBUG - Resuming existing session for logged user: ' . $validSession . ' (Status: ' . $resumableSession['status'] . ')');
                 } else {
                     // No resumable session found, create new one
                     $autoSessionResult = $this->autoCreateSessionForLoggedUser(
@@ -109,14 +100,12 @@ class ChatController extends General
                     
                     if ($autoSessionResult['success']) {
                         $validSession = $autoSessionResult['session_id'];
-                        error_log('DEBUG - Created new session for logged user: ' . $validSession);
                     } else {
                         $autoSessionError = $autoSessionResult['error'];
                     }
                 }
             } catch (Exception $e) {
                 $autoSessionError = 'Failed to start chat session automatically. Please try again.';
-                error_log('Auto-session creation/resumption failed: ' . $e->getMessage());
             }
         }
         
@@ -166,7 +155,8 @@ class ChatController extends General
         if ($apiKey) {
             $apiKeyModel = new \App\Models\ApiKeyModel();
             $domain = $this->request->getServer('HTTP_REFERER') ? parse_url($this->request->getServer('HTTP_REFERER'), PHP_URL_HOST) : null;
-            $validation = $apiKeyModel->validateApiKey($apiKey, $domain);
+            
+            $validation = $apiKeyModel->validateApiKey($apiKey);
             
             if (!$validation['valid']) {
                 return $this->jsonResponse(['error' => $validation['error']], 400);
@@ -175,16 +165,24 @@ class ChatController extends General
             // Get client_id directly from the API key data
             $keyData = $validation['key_data'];
             
-            // Debug logging to track client_id
-            error_log('DEBUG - API Key validation successful');
-            error_log('DEBUG - Key data: ' . print_r($keyData, true));
-            
             // The API key model should already have the client_id from the validation
             if (isset($keyData['client_id']) && $keyData['client_id']) {
                 $clientId = (int)$keyData['client_id'];
-                error_log('DEBUG - Client ID extracted from key data: ' . $clientId);
-            } else {
-                error_log('DEBUG - No client_id found in key data or client_id is empty');
+            }
+        }
+        
+        // CRITICAL FIX: Assign default client_id if none found
+        // This ensures sessions appear in bo-livechat dashboard
+        if ($clientId === null) {
+            // Use a default client_id (typically the first/main client)
+            // You may want to modify this logic based on your setup
+            $apiKeyModel = $apiKeyModel ?? new \App\Models\ApiKeyModel();
+            $defaultClient = $apiKeyModel->select('client_id')
+                                       ->where('status', 'active')
+                                       ->orderBy('id', 'ASC')
+                                       ->first();
+            if ($defaultClient) {
+                $clientId = (int)$defaultClient['client_id'];
             }
         }
         
@@ -246,11 +244,6 @@ class ChatController extends General
                 'session_source' => 'manual_form_submission' // vs auto-created
             ];
             
-            // Log additional context for logged users
-            error_log('DEBUG - Manual session creation for logged user: ' . $customerName);
-            if ($externalSystemId) {
-                error_log('DEBUG - External system ID: ' . $externalSystemId);
-            }
         }
         
         $data = [
@@ -272,29 +265,9 @@ class ChatController extends General
         // Merge additional context if available
         if (!empty($additionalContext)) {
             // Store additional context in a JSON field or use for logging
-            error_log('DEBUG - Additional logged user context: ' . print_r($additionalContext, true));
         }
-        
-        // Debug logging for database insertion
-        error_log('DEBUG - About to insert chat session with data: ' . print_r($data, true));
-        error_log('DEBUG - Client ID specifically: ' . var_export($clientId, true));
-        error_log('DEBUG - Email field specifically: ' . var_export($email, true));
-        error_log('DEBUG - Customer email in data array: ' . var_export($data['customer_email'], true));
         
         $chatId = $this->chatModel->insert($data);
-        
-        // Debug logging after insertion
-        if ($chatId) {
-            error_log('DEBUG - Chat session inserted successfully with ID: ' . $chatId);
-            
-            // Verify what was actually inserted
-            $insertedData = $this->chatModel->find($chatId);
-            if ($insertedData) {
-                error_log('DEBUG - Inserted data verification - client_id: ' . var_export($insertedData['client_id'], true));
-            }
-        } else {
-            error_log('DEBUG - Failed to insert chat session');
-        }
         
         if ($chatId) {
             $this->session->set('chat_session_id', $sessionId);
@@ -308,6 +281,177 @@ class ChatController extends General
         }
         
         return $this->jsonResponse(['error' => 'Failed to start chat session'], 500);
+    }
+    
+    /**
+     * Upload file for customers
+     */
+    public function uploadFile()
+    {
+        $sessionId = $this->request->getPost('session_id');
+        $uploadedFile = $this->request->getFile('file');
+        
+        if (!$sessionId || !$uploadedFile || !$uploadedFile->isValid()) {
+            return $this->jsonResponse(['error' => 'Session ID and valid file are required'], 400);
+        }
+        
+        // Get the chat session
+        $chatSession = $this->chatModel->getSessionBySessionId($sessionId);
+        if (!$chatSession) {
+            return $this->jsonResponse(['error' => 'Chat session not found'], 404);
+        }
+        
+        // Check if session is active or waiting
+        if (!in_array($chatSession['status'], ['active', 'waiting'])) {
+            return $this->jsonResponse(['error' => 'Cannot send file to closed session'], 400);
+        }
+        
+        try {
+            // Use FileCompressionService to handle file upload and compression
+            $compressionService = new \App\Services\FileCompressionService();
+            $processResult = $compressionService->processFile($uploadedFile, $sessionId);
+            
+            if (!$processResult['success']) {
+                return $this->jsonResponse(['error' => $processResult['error']], 400);
+            }
+            
+            $fileData = $processResult['file_data'];
+            
+            // Create message text
+            $messageText = "sent a file: " . $fileData['original_name'];
+            
+            // Store message in MongoDB with file data
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $messageData = [
+                'session_id' => $chatSession['session_id'],
+                'sender_type' => 'customer',
+                'sender_id' => null,
+                'sender_name' => $chatSession['customer_name'] ?: 'Customer',
+                'sender_user_type' => null,
+                'message' => $messageText,
+                'message_type' => $fileData['file_type'],
+                'file_data' => $fileData,
+                'created_at' => date('Y-m-d H:i:s'),
+                'updated_at' => date('Y-m-d H:i:s')
+            ];
+            
+            $messageId = $mongoModel->insertMessage($messageData);
+            
+            if ($messageId) {
+                // Update session timestamp
+                try {
+                    $this->chatModel->update($chatSession['id'], ['updated_at' => date('Y-m-d H:i:s')]);
+                } catch (\Exception $e) {
+                    // Ignore timestamp update errors
+                }
+                
+                return $this->jsonResponse([
+                    'success' => true,
+                    'message_id' => $messageId,
+                    'session_id' => $sessionId,
+                    'file_data' => $fileData,
+                    'message' => 'File uploaded successfully'
+                ]);
+            }
+            
+            return $this->jsonResponse(['error' => 'Failed to send file message'], 500);
+            
+        } catch (\Exception $e) {
+            return $this->jsonResponse(['error' => 'File upload failed: ' . $e->getMessage()], 500);
+        }
+    }
+    
+    /**
+     * Download file by message ID
+     */
+    public function downloadFile($messageId)
+    {
+        if (!$messageId) {
+            error_log("Download failed: No message ID provided");
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+        
+        try {
+            error_log("Attempting to download file for message ID: {$messageId}");
+            
+            // Get message from MongoDB
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $message = $mongoModel->getMessageById($messageId);
+            
+            if (!$message) {
+                error_log("Download failed: Message not found in MongoDB for ID: {$messageId}");
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+            
+            if (!isset($message['file_data'])) {
+                error_log("Download failed: No file_data in message for ID: {$messageId}");
+                error_log("Message structure: " . json_encode($message));
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+            
+            $fileData = $message['file_data'];
+            $filePath = '/www/wwwroot/files/livechat/default/chat/' . $fileData['file_path'];
+            
+            error_log("Looking for file at path: {$filePath}");
+            
+            if (!file_exists($filePath)) {
+                error_log("Download failed: File does not exist at path: {$filePath}");
+                error_log("File data: " . json_encode($fileData));
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+            
+            error_log("File found, serving download: {$fileData['original_name']}");
+            
+            // Force download
+            $this->response->setHeader('Content-Type', $fileData['mime_type'])
+                          ->setHeader('Content-Disposition', 'attachment; filename="' . $fileData['original_name'] . '"')
+                          ->setHeader('Content-Length', (string) filesize($filePath))
+                          ->setBody(file_get_contents($filePath));
+            
+            return $this->response;
+            
+        } catch (\Exception $e) {
+            error_log("Download exception for message ID {$messageId}: " . $e->getMessage());
+            error_log("Stack trace: " . $e->getTraceAsString());
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+    }
+    
+    /**
+     * Get file thumbnail by message ID
+     */
+    public function getThumbnail($messageId)
+    {
+        if (!$messageId) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
+        
+        try {
+            // Get message from MongoDB
+            $mongoModel = new \App\Models\MongoMessageModel();
+            $message = $mongoModel->getMessageById($messageId);
+            
+            if (!$message || !isset($message['file_data']) || !$message['file_data']['thumbnail_path']) {
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+            
+            $fileData = $message['file_data'];
+            $thumbnailPath = '/www/wwwroot/files/livechat/default/thumbs/' . $fileData['thumbnail_path'];
+            
+            if (!file_exists($thumbnailPath)) {
+                throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+            }
+            
+            // Serve thumbnail
+            $this->response->setHeader('Content-Type', 'image/jpeg')
+                          ->setHeader('Content-Length', (string) filesize($thumbnailPath))
+                          ->setBody(file_get_contents($thumbnailPath));
+            
+            return $this->response;
+            
+        } catch (\Exception $e) {
+            throw \CodeIgniter\Exceptions\PageNotFoundException::forPageNotFound();
+        }
     }
     
     public function assignAgent()
@@ -640,9 +784,6 @@ class ChatController extends General
             // Get API key from query parameter or header
             $apiKey = $this->request->getGet('api_key') ?: $this->request->getHeaderLine('X-API-Key');
             
-            // Debug logging
-            error_log('DEBUG - getQuickActions called with API key: ' . ($apiKey ? 'present' : 'not present'));
-            
             $quickActions = [];
             
             if ($apiKey) {
@@ -650,18 +791,12 @@ class ChatController extends General
                 $apiKeyModel = new \App\Models\ApiKeyModel();
                 $validation = $apiKeyModel->validateApiKey($apiKey);
                 
-                error_log('DEBUG - API key validation result: ' . ($validation['valid'] ? 'valid' : 'invalid'));
-                
                 if ($validation['valid']) {
                     $keyData = $validation['key_data'];
                     $clientId = $keyData['client_id'];
                     
-                    error_log('DEBUG - Client ID from API key: ' . $clientId);
-                    
                     // Get keyword responses for this specific client
                     $keywordResponses = $this->keywordResponseModel->getActiveResponsesForClient($clientId);
-                    
-                    error_log('DEBUG - Found ' . count($keywordResponses) . ' keyword responses for client ' . $clientId);
                     
                     // Transform the data to match the expected format for frontend
                     foreach ($keywordResponses as $response) {
@@ -671,19 +806,12 @@ class ChatController extends General
                             'response' => $response['response']
                         ];
                     }
-                } else {
-                    error_log('DEBUG - API key validation failed: ' . ($validation['error'] ?? 'unknown error'));
                 }
-            } else {
-                error_log('DEBUG - No API key provided');
             }
-            
-            error_log('DEBUG - Returning ' . count($quickActions) . ' quick actions');
             
         } catch (\Exception $e) {
             // Log the exception for debugging
-            error_log('DEBUG - Exception in getQuickActions: ' . $e->getMessage());
-            error_log('DEBUG - Exception trace: ' . $e->getTraceAsString());
+            error_log('Exception in getQuickActions: ' . $e->getMessage());
             $quickActions = [];
         }
 
@@ -949,20 +1077,9 @@ class ChatController extends General
         $session = $this->chatModel->getResumableSessionForUser($externalUsername, $externalFullname, $externalSystemId, $resumableWindowMinutes);
         
         if ($session) {
-            error_log('DEBUG - Found resumable session for logged user: ' . print_r([
-                'session_id' => $session['session_id'],
-                'external_username' => $externalUsername,
-                'external_fullname' => $externalFullname,
-                'external_system_id' => $externalSystemId,
-                'session_status' => $session['status'],
-                'session_age_minutes' => round((strtotime(date('Y-m-d H:i:s')) - strtotime($session['created_at'])) / 60),
-                'agent_assigned' => $session['agent_id'] ? 'Yes (ID: ' . $session['agent_id'] . ')' : 'No'
-            ], true));
-            
             return $session;
         }
         
-        error_log('DEBUG - No resumable session found for logged user: ' . ($externalUsername ?: 'N/A') . '/' . ($externalFullname ?: 'N/A') . ' (External ID: ' . ($externalSystemId ?: 'N/A') . ')');
         return null;
     }
     
@@ -996,6 +1113,18 @@ class ChatController extends General
             $keyData = $validation['key_data'];
             if (isset($keyData['client_id']) && $keyData['client_id']) {
                 $clientId = (int)$keyData['client_id'];
+            }
+        }
+        
+        // CRITICAL FIX: Assign default client_id for auto-created sessions
+        if ($clientId === null) {
+            $apiKeyModel = $apiKeyModel ?? new \App\Models\ApiKeyModel();
+            $defaultClient = $apiKeyModel->select('client_id')
+                                       ->where('status', 'active')
+                                       ->orderBy('id', 'ASC')
+                                       ->first();
+            if ($defaultClient) {
+                $clientId = (int)$defaultClient['client_id'];
             }
         }
         
@@ -1037,21 +1166,11 @@ class ChatController extends General
             'status' => 'waiting'
         ];
         
-        // Debug logging for auto-session creation
-        error_log('DEBUG - Auto-creating NEW chat session for logged user: ' . $customerName . ' (No resumable session found)');
-        error_log('DEBUG - New session data: ' . print_r($data, true));
-        error_log('DEBUG - Session context: ' . print_r($sessionContext, true));
-        if ($externalSystemId) {
-            error_log('DEBUG - Auto-session External system ID: ' . $externalSystemId);
-        }
-        
         $chatId = $this->chatModel->insert($data);
         
         if ($chatId) {
             $this->session->set('chat_session_id', $sessionId);
             $this->session->set('user_role', 'loggedUser');
-            
-            error_log('DEBUG - Auto-created chat session successfully with ID: ' . $chatId);
             
             return [
                 'success' => true,
@@ -1061,7 +1180,6 @@ class ChatController extends General
             ];
         }
         
-        error_log('DEBUG - Failed to auto-create chat session');
         return ['success' => false, 'error' => 'Failed to start chat session'];
     }
     

@@ -14,7 +14,7 @@ class ApiKeyModel extends Model
     protected $protectFields = true;
     
     protected $allowedFields = [
-        'client_id', 'key_id', 'api_key', 'client_name', 'client_email', 'client_domain',
+        'client_id', 'key_id', 'api_key', 'client_name', 'client_email',
         'status', 'last_used_at'
     ];
     
@@ -34,7 +34,7 @@ class ApiKeyModel extends Model
     
     public function validateApiKey($apiKey, $domain = null)
     {
-        $key = $this->select('id, client_id, key_id, api_key, client_name, client_email, client_domain, status, last_used_at')
+        $key = $this->select('id, client_id, key_id, api_key, client_name, client_email, status, last_used_at')
                    ->where('api_key', $apiKey)
                    ->where('status', 'active')
                    ->first();
@@ -43,12 +43,7 @@ class ApiKeyModel extends Model
             return ['valid' => false, 'error' => 'Invalid or inactive API key'];
         }
         
-        // Check domain restriction if set
-        if ($key['client_domain'] && $domain) {
-            if (!$this->isDomainAllowed($key['client_domain'], $domain)) {
-                return ['valid' => false, 'error' => 'Domain not authorized for this API key'];
-            }
-        }
+        // Domain validation removed
         
         // Update last used timestamp
         $this->update($key['id'], ['last_used_at' => date('Y-m-d H:i:s')]);
@@ -56,25 +51,6 @@ class ApiKeyModel extends Model
         return ['valid' => true, 'key_data' => $key];
     }
     
-    public function isDomainAllowed($allowedDomains, $requestDomain)
-    {
-        $domains = array_map('trim', explode(',', $allowedDomains));
-        
-        foreach ($domains as $domain) {
-            // Exact match
-            if ($domain === $requestDomain) return true;
-            
-            // Wildcard subdomain match (*.example.com)
-            if (str_starts_with($domain, '*.')) {
-                $baseDomain = substr($domain, 2);
-                if (str_ends_with($requestDomain, '.' . $baseDomain) || $requestDomain === $baseDomain) {
-                    return true;
-                }
-            }
-        }
-        
-        return false;
-    }
     
     public function getApiKeyStats()
     {

@@ -171,6 +171,10 @@ class ChatServer implements MessageComponentInterface
                 $this->handleMessage($from, $data);
                 break;
                 
+            case 'file_message':
+                $this->handleFileMessage($from, $data);
+                break;
+                
             case 'typing':
                 $this->handleTyping($from, $data);
                 break;
@@ -400,6 +404,42 @@ class ChatServer implements MessageComponentInterface
         // Notify other agents if customer is waiting
         if ($senderType === 'customer' && $chatSession['status'] === 'waiting') {
             $this->notifyAgents($sessionId, 'new_message');
+        }
+    }
+    
+    protected function handleFileMessage($from, $data)
+    {
+        $sessionId = $data['session_id'];
+        $messageId = $data['id'];
+        $message = $data['message'];
+        $senderType = $data['sender_type'];
+        $senderName = $data['sender_name'];
+        $fileData = $data['file_data'];
+        $timestamp = $data['timestamp'];
+        
+        // Prepare file message response for WebSocket broadcast
+        $response = [
+            'type' => 'message', // Use 'message' type so existing clients handle it
+            'id' => $messageId,
+            'session_id' => $sessionId,
+            'sender_type' => $senderType,
+            'sender_name' => $senderName,
+            'message' => $message,
+            'message_type' => $data['message_type'],
+            'file_data' => $fileData,
+            'timestamp' => $timestamp
+        ];
+        
+        // Send to all connections in this session
+        if (isset($this->sessions[$sessionId])) {
+            foreach ($this->sessions[$sessionId] as $client) {
+                $client['connection']->send(json_encode($response));
+            }
+        }
+        
+        // Notify other agents if customer sent a file and is waiting
+        if ($senderType === 'customer') {
+            $this->notifyAgents($sessionId, 'new_file_message');
         }
     }
     

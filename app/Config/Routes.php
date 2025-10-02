@@ -23,6 +23,11 @@ $routes->get('/chat/quick-actions', 'ChatController::getQuickActions');
 $routes->get('/agent/workload', 'ChatController::getAgentWorkload');
 $routes->get('/chat/test-mongodb', 'ChatController::testMongoDB');
 
+// File upload routes
+$routes->post('/chat/upload-file', 'ChatController::uploadFile');
+$routes->get('/chat/download-file/(:segment)', 'ChatController::downloadFile/$1');
+$routes->get('/chat/thumbnail/(:segment)', 'ChatController::getThumbnail/$1');
+
 // Real-time notifications (for WebSocket fallback)
 $routes->group('api/notifications', function($routes) {
     $routes->get('poll', 'NotificationController::poll');

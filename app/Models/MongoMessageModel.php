@@ -127,6 +127,47 @@ class MongoMessageModel
     /**
      * Insert a message into MongoDB
      */
+    public function insertMessage($data)
+    {
+        try {
+            // Get client username from session data or use fallback
+            $clientUsername = $this->extractClientUsername($data);
+            $collectionName = $this->getCollectionName($clientUsername);
+            
+            $collection = $this->ensureCollection($collectionName);
+            
+            // Prepare document for MongoDB with file support
+            $document = [
+                'session_id' => $data['session_id'],
+                'sender_type' => $data['sender_type'],
+                'sender_id' => isset($data['sender_id']) ? (int)$data['sender_id'] : null,
+                'message' => $data['message'],
+                'message_type' => $data['message_type'] ?? 'text',
+                'is_read' => isset($data['is_read']) ? (bool)$data['is_read'] : false,
+                'created_at' => isset($data['timestamp']) ? $data['timestamp'] : new UTCDateTime()
+            ];
+            
+            // Add file data if present
+            if (isset($data['file_data'])) {
+                $document['file_data'] = $data['file_data'];
+            }
+            
+            $result = $collection->insertOne($document);
+            
+            if ($result->getInsertedCount() > 0) {
+                return (string)$result->getInsertedId();
+            }
+            
+            return false;
+        } catch (Exception $e) {
+            error_log('MongoDB insertMessage error: ' . $e->getMessage());
+            return false;
+        }
+    }
+    
+    /**
+     * Insert a message into MongoDB (legacy method for backward compatibility)
+     */
     public function insert($data)
     {
         try {
@@ -200,7 +241,7 @@ class MongoMessageModel
             
             $result = [];
             foreach ($messages as $message) {
-                $result[] = [
+                $messageData = [
                     'id' => (string)$message['_id'],
                     'session_id' => $message['session_id'],
                     'sender_type' => $message['sender_type'],
@@ -211,6 +252,13 @@ class MongoMessageModel
                     'created_at' => $this->convertToMalaysiaTime($message['created_at']),
                     'timestamp' => $this->convertToMalaysiaTime($message['created_at'])
                 ];
+                
+                // Add file data if present
+                if (isset($message['file_data'])) {
+                    $messageData['file_data'] = $message['file_data'];
+                }
+                
+                $result[] = $messageData;
             }
             
             return $result;
@@ -286,7 +334,9 @@ class MongoMessageModel
             }
             
             // Get messages from MongoDB for these sessions
-            $clientUsername = $externalUsername ?: $externalFullname;
+            // Use the API key from the first session to determine the correct collection
+            $firstSession = $userSessions[0];
+            $clientUsername = $this->extractClientUsernameFromSession($firstSession);
             $collectionName = $this->getCollectionName($clientUsername);
             $collection = $this->database->selectCollection($collectionName);
             
@@ -309,7 +359,7 @@ class MongoMessageModel
                     }
                 }
                 
-                $result[] = [
+                $messageData = [
                     'id' => (string)$message['_id'],
                     'session_id' => $message['session_id'],
                     'sender_type' => $message['sender_type'],
@@ -322,6 +372,13 @@ class MongoMessageModel
                     'customer_name' => $session ? $session['customer_name'] : null,
                     'customer_fullname' => $session ? $session['customer_fullname'] : null
                 ];
+                
+                // Add file data if present
+                if (isset($message['file_data'])) {
+                    $messageData['file_data'] = $message['file_data'];
+                }
+                
+                $result[] = $messageData;
             }
             
             return $result;
@@ -491,32 +548,45 @@ class MongoMessageModel
     }
     
     /**
-     * Get debug info about which resolution strategy was used
+     * Get a message by its MongoDB ID
      */
-    private function getResolutionStrategy($session)
+    public function getMessageById($messageId)
     {
-        if (!empty($session['api_key'])) {
-            return 'api_key_lookup';
-        }
-        
-        if (!empty($session['external_username'])) {
-            $clientUsername = $this->findClientByUsername($session['external_username']);
-            if ($clientUsername) {
-                return 'username_match_in_clients_table';
+        try {
+            // We need to check all collections since we don't know which one contains the message
+            $collectionNames = $this->database->listCollectionNames();
+            
+            foreach ($collectionNames as $collectionName) {
+                if (strpos($collectionName, '_messages') !== false) {
+                    $collection = $this->database->selectCollection($collectionName);
+                    
+                    try {
+                        $message = $collection->findOne(['_id' => new ObjectId($messageId)]);
+                        
+                        if ($message) {
+                            return [
+                                'id' => (string)$message['_id'],
+                                'session_id' => $message['session_id'],
+                                'sender_type' => $message['sender_type'],
+                                'sender_id' => $message['sender_id'] ?? null,
+                                'message' => $message['message'],
+                                'message_type' => $message['message_type'] ?? 'text',
+                                'is_read' => $message['is_read'] ?? false,
+                                'created_at' => isset($message['created_at']) ? $this->convertToMalaysiaTime($message['created_at']) : null,
+                                'file_data' => $message['file_data'] ?? null
+                            ];
+                        }
+                    } catch (Exception $e) {
+                        // Invalid ObjectId or collection error, continue searching
+                        continue;
+                    }
+                }
             }
             
-            $testCollectionName = strtolower($session['external_username']) . '_messages';
-            $testCollection = $this->database->selectCollection($testCollectionName);
-            if ($testCollection->estimatedDocumentCount() > 0) {
-                return 'external_username_collection_exists';
-            }
+            return null;
+        } catch (Exception $e) {
+            error_log('Failed to get message by ID from MongoDB: ' . $e->getMessage());
+            return null;
         }
-        
-        $client1Collection = $this->database->selectCollection('client1_messages');
-        if ($client1Collection->estimatedDocumentCount() > 0) {
-            return 'client1_fallback';
-        }
-        
-        return 'unknown_fallback';
     }
 }

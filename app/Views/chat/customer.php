@@ -2,6 +2,7 @@
 
 <?= $this->section('content') ?>
 <link rel="stylesheet" href="<?= base_url('assets/css/date.css?v=' . time()) ?>">
+<link rel="stylesheet" href="<?= base_url('assets/css/file-upload.css?v=' . time()) ?>">
 
 <?php if (isset($is_fullscreen) && $is_fullscreen): ?>
 <!-- Fullscreen Mode CSS -->
@@ -111,9 +112,39 @@
             
             <div class="chat-input-area">
                 <form id="messageForm">
-                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-                    <button type="submit" class="btn btn-send">Send</button>
+                    <div class="input-group">
+                        <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
+                        <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
+                            <i class="fas fa-paperclip"></i>
+                        </button>
+                        <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
+                        <div class="input-group-append">
+                            <button type="submit" class="btn btn-send">Send</button>
+                        </div>
+                    </div>
                 </form>
+                
+                <!-- File Upload Progress -->
+                <div id="fileUploadProgress" class="file-upload-progress" style="display: none;">
+                    <div class="progress-bar">
+                        <div class="progress-fill"></div>
+                    </div>
+                    <span class="progress-text">Uploading file...</span>
+                </div>
+                
+                <!-- File Preview -->
+                <div id="filePreview" class="file-preview" style="display: none;">
+                    <div class="preview-content">
+                        <span class="file-info">
+                            <i class="file-icon"></i>
+                            <span class="file-name"></span>
+                            <span class="file-size"></span>
+                        </span>
+                        <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         <?php endif; ?>
@@ -187,6 +218,278 @@
         if (messageForm) {
             messageForm.dispatchEvent(new Event('submit'));
         }
+    }
+    
+    // File upload functionality
+    let selectedFile = null;
+    
+    // Drag and drop support
+    document.addEventListener('DOMContentLoaded', function() {
+        const chatInputArea = document.querySelector('.chat-input-area');
+        if (chatInputArea) {
+            chatInputArea.addEventListener('dragover', handleDragOver);
+            chatInputArea.addEventListener('drop', handleFileDrop);
+            chatInputArea.addEventListener('dragleave', handleDragLeave);
+        }
+    });
+    
+    function handleFileSelect(event) {
+        const file = event.target.files[0];
+        if (file) {
+            selectedFile = file;
+            // Ensure DOM is ready before showing preview
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => showFilePreview(file));
+            } else {
+                showFilePreview(file);
+            }
+        }
+    }
+    
+    function handleDragOver(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.classList.add('drag-over');
+    }
+    
+    function handleDragLeave(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.classList.remove('drag-over');
+    }
+    
+    function handleFileDrop(event) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.currentTarget.classList.remove('drag-over');
+        
+        const files = event.dataTransfer.files;
+        if (files.length > 0) {
+            selectedFile = files[0];
+            // Ensure DOM is ready before showing preview
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', () => showFilePreview(files[0]));
+            } else {
+                showFilePreview(files[0]);
+            }
+        }
+    }
+    
+    function showFilePreview(file) {
+        const preview = document.getElementById('filePreview');
+        if (!preview) return;
+        
+        const fileName = preview.querySelector('.file-name');
+        const fileSize = preview.querySelector('.file-size');
+        const fileIcon = preview.querySelector('.file-icon');
+        
+        if (!fileName || !fileSize || !fileIcon) {
+            console.error('File preview elements not found');
+            return;
+        }
+        
+        fileName.textContent = file.name;
+        fileSize.textContent = formatFileSize(file.size);
+        
+        // Set appropriate icon based on file type
+        const extension = file.name.split('.').pop().toLowerCase();
+        fileIcon.className = getFileIcon(extension);
+        
+        preview.style.display = 'block';
+    }
+    
+    function removeFilePreview() {
+        selectedFile = null;
+        document.getElementById('filePreview').style.display = 'none';
+        document.getElementById('fileInput').value = '';
+    }
+    
+    // Send regular text message via WebSocket
+    function sendTextMessage(message) {
+        if (ws && ws.readyState === WebSocket.OPEN && sessionId) {
+            const messageData = {
+                type: 'message',
+                session_id: sessionId,
+                message: message,
+                sender_type: 'customer',
+                sender_id: null
+            };
+            
+            ws.send(JSON.stringify(messageData));
+            
+            // Clear the message input
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.value = '';
+            }
+        }
+    }
+    
+    // Trigger file upload dialog (similar to bo-livechat)
+    function triggerFileUpload() {
+        document.getElementById('fileInput').click();
+    }
+    
+    // Handle form submission with file or text message
+    function submitMessageOrFile(event) {
+        if (event) event.preventDefault();
+        
+        if (selectedFile) {
+            // Upload file instead of sending text message
+            return uploadFile();
+        } else {
+            // Send regular text message
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            if (message) {
+                sendTextMessage(message);
+            }
+        }
+        
+        return false;
+    }
+    
+    function uploadFile() {
+        if (!selectedFile || !sessionId) {
+            return;
+        }
+        
+        const formData = new FormData();
+        formData.append('file', selectedFile);
+        formData.append('session_id', sessionId);
+        
+        // Show progress
+        showUploadProgress();
+        
+        fetch(baseUrl + 'chat/upload-file', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideUploadProgress();
+            
+            if (data.success) {
+                // File uploaded successfully, remove preview
+                removeFilePreview();
+                
+                // Send WebSocket notification for real-time updates
+                if (ws && ws.readyState === WebSocket.OPEN && data.file_data) {
+                    const fileMessage = {
+                        type: 'file_message',
+                        id: data.message_id,
+                        session_id: sessionId,
+                        sender_type: 'customer',
+                        sender_id: null,
+                        sender_name: data.file_data.customer_name || 'Customer',
+                        message: '', // No text message, just show the file
+                        message_type: data.file_data.file_type || 'file',
+                        file_data: data.file_data,
+                        timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                    };
+                    
+                    ws.send(JSON.stringify(fileMessage));
+                }
+                
+                console.log('File uploaded successfully:', data.file_data);
+            } else {
+                alert('File upload failed: ' + data.error);
+            }
+        })
+        .catch(error => {
+            hideUploadProgress();
+            console.error('File upload error:', error);
+            alert('File upload failed. Please try again.');
+        });
+    }
+    
+    function showUploadProgress() {
+        document.getElementById('fileUploadProgress').style.display = 'block';
+        // Animate progress bar
+        const progressFill = document.querySelector('.progress-fill');
+        progressFill.style.width = '0%';
+        
+        // Simulate progress (in a real implementation, you'd track actual upload progress)
+        let progress = 0;
+        const interval = setInterval(() => {
+            progress += Math.random() * 30;
+            if (progress > 90) progress = 90;
+            progressFill.style.width = progress + '%';
+            
+            if (progress >= 90) {
+                clearInterval(interval);
+            }
+        }, 200);
+    }
+    
+    function hideUploadProgress() {
+        const progressElement = document.getElementById('fileUploadProgress');
+        const progressFill = document.querySelector('.progress-fill');
+        
+        // Complete the progress
+        progressFill.style.width = '100%';
+        
+        setTimeout(() => {
+            progressElement.style.display = 'none';
+            progressFill.style.width = '0%';
+        }, 500);
+    }
+    
+    function formatFileSize(bytes) {
+        if (bytes >= 1073741824) {
+            return (bytes / 1073741824).toFixed(2) + ' GB';
+        } else if (bytes >= 1048576) {
+            return (bytes / 1048576).toFixed(2) + ' MB';
+        } else if (bytes >= 1024) {
+            return (bytes / 1024).toFixed(2) + ' KB';
+        } else {
+            return bytes + ' B';
+        }
+    }
+    
+    function getFileIcon(extension) {
+        const iconMap = {
+            // Images
+            'jpg': 'fas fa-image text-primary',
+            'jpeg': 'fas fa-image text-primary',
+            'png': 'fas fa-image text-primary',
+            'gif': 'fas fa-image text-primary',
+            'webp': 'fas fa-image text-primary',
+            'bmp': 'fas fa-image text-primary',
+            
+            // Videos
+            'mp4': 'fas fa-video text-danger',
+            'avi': 'fas fa-video text-danger',
+            'mov': 'fas fa-video text-danger',
+            'wmv': 'fas fa-video text-danger',
+            'flv': 'fas fa-video text-danger',
+            'webm': 'fas fa-video text-danger',
+            
+            // Documents
+            'pdf': 'fas fa-file-pdf text-danger',
+            'doc': 'fas fa-file-word text-info',
+            'docx': 'fas fa-file-word text-info',
+            'txt': 'fas fa-file-alt text-info',
+            'rtf': 'fas fa-file-alt text-info',
+            
+            // Archives
+            'zip': 'fas fa-file-archive text-warning',
+            'rar': 'fas fa-file-archive text-warning',
+            '7z': 'fas fa-file-archive text-warning',
+            'tar': 'fas fa-file-archive text-warning',
+            'gz': 'fas fa-file-archive text-warning',
+            
+            // Spreadsheets
+            'xls': 'fas fa-file-excel text-success',
+            'xlsx': 'fas fa-file-excel text-success',
+            'csv': 'fas fa-file-csv text-success',
+            
+            // Presentations
+            'ppt': 'fas fa-file-powerpoint text-warning',
+            'pptx': 'fas fa-file-powerpoint text-warning'
+        };
+        
+        return iconMap[extension] || 'fas fa-file text-secondary';
     }
     
     // Function to handle customer leaving the chat (session closes for both customer and admin)

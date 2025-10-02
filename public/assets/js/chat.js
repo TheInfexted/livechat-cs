@@ -1214,6 +1214,13 @@ function initializeMessageForm() {
         freshMessageForm.addEventListener('submit', function(e) {
             e.preventDefault();
             
+            // Check if the customer page has submitMessageOrFile function (for file upload support)
+            if (typeof submitMessageOrFile === 'function') {
+                submitMessageOrFile(e);
+                return;
+            }
+            
+            // Fallback to original text-only message handling
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
             
@@ -1432,16 +1439,31 @@ function displayMessage(data) {
         const messageContent = document.createElement('div');
         messageContent.className = 'message-content';
         
-        const bubble = document.createElement('div');
-        bubble.className = 'message-bubble';
-        bubble.innerHTML = makeLinksClickable(data.message);
+        // Handle file messages differently
+        if (data.file_data) {
+            const fileContainer = renderFileMessage(data.file_data, data.id);
+            messageContent.appendChild(fileContainer);
+            
+            // Add file message text if present
+            if (data.message && data.message.trim() !== `File: ${data.file_data.original_name}`) {
+                const textBubble = document.createElement('div');
+                textBubble.className = 'message-bubble';
+                textBubble.innerHTML = makeLinksClickable(data.message);
+                messageContent.appendChild(textBubble);
+            }
+        } else {
+            // Regular text message
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+            bubble.innerHTML = makeLinksClickable(data.message);
+            messageContent.appendChild(bubble);
+        }
         
         const time = document.createElement('div');
         time.className = 'message-time';
         time.textContent = formatTime(data.created_at || data.timestamp);
         
-        bubble.appendChild(time);
-        messageContent.appendChild(bubble);
+        messageContent.appendChild(time);
         
         // Assemble the message
         messageDiv.appendChild(avatarDiv);
@@ -1959,3 +1981,319 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     }
 });
+
+// File message rendering function
+function renderFileMessage(fileData, messageId) {
+    const fileContainer = document.createElement('div');
+    fileContainer.className = `message-file file-type-${fileData.file_type || 'other'}`;
+    
+    // File icon
+    const fileIcon = document.createElement('i');
+    fileIcon.className = getFileIconClass(fileData.file_type, fileData.mime_type);
+    
+    // File details container
+    const fileDetails = document.createElement('div');
+    fileDetails.className = 'file-details';
+    
+    // File name
+    const fileName = document.createElement('div');
+    fileName.className = 'file-name';
+    fileName.textContent = fileData.original_name || 'Unknown File';
+    fileName.title = fileData.original_name || 'Unknown File';
+    
+    // File metadata
+    const fileMeta = document.createElement('div');
+    fileMeta.className = 'file-meta';
+    
+    const fileSize = document.createElement('span');
+    fileSize.textContent = formatFileSize(fileData.compressed_size || fileData.file_size);
+    fileMeta.appendChild(fileSize);
+    
+    // Show compression info if file was compressed
+    if (fileData.compression_status === 'compressed' && fileData.file_size !== fileData.compressed_size) {
+        const compressionInfo = document.createElement('span');
+        compressionInfo.className = 'compression-info compression-saved';
+        const savedSize = fileData.file_size - fileData.compressed_size;
+        const compressionRatio = ((savedSize / fileData.file_size) * 100).toFixed(1);
+        compressionInfo.innerHTML = `<i class="fas fa-compress-arrows-alt"></i> Compressed ${compressionRatio}%`;
+        fileMeta.appendChild(compressionInfo);
+    }
+    
+    fileDetails.appendChild(fileName);
+    fileDetails.appendChild(fileMeta);
+    
+    // File actions
+    const fileActions = document.createElement('div');
+    fileActions.className = 'file-actions';
+    
+    // Download button - handle iframe restrictions
+    const downloadBtn = document.createElement('a');
+    downloadBtn.className = 'file-download-btn';
+    const downloadBaseUrl = typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/');
+    downloadBtn.href = `${downloadBaseUrl}chat/download-file/${messageId}`;
+    downloadBtn.download = fileData.original_name;
+    downloadBtn.innerHTML = '<i class="fas fa-download"></i> Download';
+    downloadBtn.target = '_blank';
+    
+    // Handle iframe download restrictions
+    downloadBtn.onclick = function(e) {
+        // If we're in an iframe, try to open in parent window
+        if (window !== window.parent) {
+            e.preventDefault();
+            try {
+                // Try to open in parent window
+                window.parent.open(this.href, '_blank');
+            } catch (error) {
+                // Fallback: try direct navigation
+                window.location.href = this.href;
+            }
+        }
+        // If not in iframe, let default behavior work
+    };
+    
+    fileActions.appendChild(downloadBtn);
+    
+    // View button for images
+    if (fileData.file_type === 'image' && fileData.thumbnail_path) {
+        const viewBtn = document.createElement('button');
+        viewBtn.className = 'file-view-btn';
+        viewBtn.innerHTML = '<i class="fas fa-eye"></i> View';
+        viewBtn.onclick = () => showImagePreview(fileData, messageId);
+        fileActions.appendChild(viewBtn);
+    }
+    
+    // Thumbnail for images
+    let thumbnail = null;
+    if (fileData.file_type === 'image') {
+        thumbnail = document.createElement('div');
+        thumbnail.className = 'file-thumbnail';
+        
+        if (fileData.thumbnail_path) {
+            const img = document.createElement('img');
+            const thumbnailBaseUrl = typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/');
+            img.src = `${thumbnailBaseUrl}chat/thumbnail/${messageId}`;
+            img.alt = fileData.original_name;
+            img.onclick = () => showImagePreview(fileData, messageId);
+            thumbnail.appendChild(img);
+        } else {
+            // Fallback icon for images without thumbnails
+            const fallbackIcon = document.createElement('i');
+            fallbackIcon.className = 'fas fa-image text-primary';
+            thumbnail.appendChild(fallbackIcon);
+        }
+    }
+    
+    // Assemble the file message
+    if (thumbnail) {
+        fileContainer.appendChild(thumbnail);
+    }
+    fileContainer.appendChild(fileIcon);
+    fileContainer.appendChild(fileDetails);
+    fileContainer.appendChild(fileActions);
+    
+    return fileContainer;
+}
+
+// Helper function to get file icon class
+function getFileIconClass(fileType, mimeType) {
+    switch (fileType) {
+        case 'image':
+            return 'fas fa-image text-primary';
+        case 'video':
+            return 'fas fa-video text-danger';
+        case 'document':
+            if (mimeType && mimeType.includes('pdf')) {
+                return 'fas fa-file-pdf text-danger';
+            }
+            return 'fas fa-file-alt text-info';
+        case 'archive':
+            return 'fas fa-file-archive text-warning';
+        case 'other':
+            if (mimeType) {
+                if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) {
+                    return 'fas fa-file-excel text-success';
+                }
+                if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) {
+                    return 'fas fa-file-powerpoint text-warning';
+                }
+            }
+            return 'fas fa-file text-secondary';
+        default:
+            return 'fas fa-file text-secondary';
+    }
+}
+
+// Helper function to handle iframe download restrictions
+function handleIframeDownload(event, element) {
+    // If we're in an iframe, try to open in parent window
+    if (window !== window.parent) {
+        event.preventDefault();
+        try {
+            // Try to open in parent window
+            window.parent.open(element.href, '_blank');
+        } catch (error) {
+            // Fallback: try direct navigation
+            window.location.href = element.href;
+        }
+    }
+    // If not in iframe, let default behavior work
+}
+
+// Helper function to format file size
+function formatFileSize(bytes) {
+    if (!bytes || bytes === 0) return '0 B';
+    
+    const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    
+    return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// Image preview function
+function showImagePreview(fileData, messageId) {
+    const modal = document.createElement('div');
+    modal.className = 'image-preview-modal';
+    modal.innerHTML = `
+        <div class="modal-backdrop" onclick="this.parentElement.remove()"></div>
+        <div class="modal-content">
+            <div class="modal-header">
+                <h4>${fileData.original_name}</h4>
+                <button class="close-modal" onclick="this.closest('.image-preview-modal').remove()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <img src="${typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/')}chat/download-file/${messageId}" alt="${fileData.original_name}" class="preview-image">
+            </div>
+            <div class="modal-footer">
+                <a href="${typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/')}chat/download-file/${messageId}" download="${fileData.original_name}" class="btn btn-primary" onclick="handleIframeDownload(event, this)">
+                    <i class="fas fa-download"></i> Download
+                </a>
+            </div>
+        </div>
+    `;
+    
+    // Add modal styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .image-preview-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 9999;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .image-preview-modal .modal-backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0);
+            cursor: pointer;
+        }
+        
+        .image-preview-modal .modal-content {
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            max-width: 90vw;
+            max-height: 90vh;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+        }
+        
+        .image-preview-modal .modal-header {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #e9ecef;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .image-preview-modal .modal-header h4 {
+            margin: 0;
+            font-size: 16px;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            max-width: 400px;
+        }
+        
+        .image-preview-modal .close-modal {
+            background: none;
+            border: none;
+            font-size: 18px;
+            cursor: pointer;
+            color: #666;
+            padding: 4px 8px;
+            border-radius: 4px;
+            transition: all 0.2s ease;
+        }
+        
+        .image-preview-modal .close-modal:hover {
+            background: #e9ecef;
+            color: #333;
+        }
+        
+        .image-preview-modal .modal-body {
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            max-height: 70vh;
+            overflow: hidden;
+        }
+        
+        .image-preview-modal .preview-image {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+        
+        .image-preview-modal .modal-footer {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-top: 1px solid #e9ecef;
+            text-align: center;
+        }
+        
+        .image-preview-modal .btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: all 0.2s ease;
+        }
+        
+        .image-preview-modal .btn:hover {
+            background: #5a67d8;
+            color: white;
+            text-decoration: none;
+        }
+    `;
+    
+    document.head.appendChild(style);
+    document.body.appendChild(modal);
+
+    // Close modal on escape key
+    const closeOnEscape = (e) => {
+        if (e.key === 'Escape') {
+            modal.remove();
+            document.removeEventListener('keydown', closeOnEscape);
+        }
+    };
+    document.addEventListener('keydown', closeOnEscape);
+}
