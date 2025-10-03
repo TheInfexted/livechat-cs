@@ -1492,6 +1492,16 @@ function displayMessage(data) {
         container.appendChild(messageDiv);
     }
     
+    // Attach click handlers for images after DOM is updated
+    if (data.file_data && data.file_data.file_type === 'image') {
+        const imageElement = messageDiv.querySelector('.customer-image');
+        if (imageElement) {
+            imageElement.addEventListener('click', function() {
+                openCustomerImageModal(this);
+            });
+        }
+    }
+    
     container.scrollTop = container.scrollHeight;
 }
 
@@ -1982,8 +1992,60 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
+// Render image messages directly in chat
+function renderCustomerImageMessage(fileData, messageId) {
+    const imageContainer = document.createElement('div');
+    imageContainer.className = 'customer-image-container';
+    
+    // Create clickable image element
+    const img = document.createElement('img');
+    img.className = 'customer-image';
+    img.alt = fileData.original_name || 'Image';
+    img.title = fileData.original_name || 'Click to view full size';
+    
+    // Set image source using local thumbnail endpoint
+    const thumbnailBaseUrl = typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/');
+    img.src = `${thumbnailBaseUrl}chat/thumbnail/${messageId}`;
+    
+    // Store metadata for modal
+    img.setAttribute('data-message-id', messageId);
+    img.setAttribute('data-file-name', fileData.original_name || 'Unknown File');
+    img.setAttribute('data-file-size', fileData.compressed_size || fileData.file_size);
+    img.setAttribute('data-original-url', fileData.file_url || `${thumbnailBaseUrl}chat/download-file/${messageId}`);
+    
+    // Add error handling
+    img.onerror = function() {
+        console.warn('Image failed to load:', img.src);
+        // Replace with fallback
+        const fallbackContainer = document.createElement('div');
+        fallbackContainer.className = 'customer-image-fallback';
+        fallbackContainer.innerHTML = `
+            <i class="fas fa-image text-muted" style="font-size: 48px;"></i>
+            <div class="text-muted mt-2">Image failed to load</div>
+        `;
+        imageContainer.innerHTML = '';
+        imageContainer.appendChild(fallbackContainer);
+    };
+    
+    imageContainer.appendChild(img);
+    return imageContainer; // Return DOM element, not HTML string
+}
+
 // File message rendering function
 function renderFileMessage(fileData, messageId) {
+    // Ensure messageId is a string
+    if (messageId && typeof messageId === 'object' && messageId.toString) {
+        messageId = messageId.toString();
+    } else {
+        messageId = String(messageId);
+    }
+    
+    // For images, display them directly in chat
+    if (fileData.file_type === 'image') {
+        return renderCustomerImageMessage(fileData, messageId);
+    }
+    
+    // For non-image files, use the existing card format
     const fileContainer = document.createElement('div');
     fileContainer.className = `message-file file-type-${fileData.file_type || 'other'}`;
     
@@ -2053,40 +2115,7 @@ function renderFileMessage(fileData, messageId) {
     
     fileActions.appendChild(downloadBtn);
     
-    // View button for images
-    if (fileData.file_type === 'image' && fileData.thumbnail_path) {
-        const viewBtn = document.createElement('button');
-        viewBtn.className = 'file-view-btn';
-        viewBtn.innerHTML = '<i class="fas fa-eye"></i> View';
-        viewBtn.onclick = () => showImagePreview(fileData, messageId);
-        fileActions.appendChild(viewBtn);
-    }
-    
-    // Thumbnail for images
-    let thumbnail = null;
-    if (fileData.file_type === 'image') {
-        thumbnail = document.createElement('div');
-        thumbnail.className = 'file-thumbnail';
-        
-        if (fileData.thumbnail_path) {
-            const img = document.createElement('img');
-            const thumbnailBaseUrl = typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/');
-            img.src = `${thumbnailBaseUrl}chat/thumbnail/${messageId}`;
-            img.alt = fileData.original_name;
-            img.onclick = () => showImagePreview(fileData, messageId);
-            thumbnail.appendChild(img);
-        } else {
-            // Fallback icon for images without thumbnails
-            const fallbackIcon = document.createElement('i');
-            fallbackIcon.className = 'fas fa-image text-primary';
-            thumbnail.appendChild(fallbackIcon);
-        }
-    }
-    
-    // Assemble the file message
-    if (thumbnail) {
-        fileContainer.appendChild(thumbnail);
-    }
+    // Assemble the file message for non-image files
     fileContainer.appendChild(fileIcon);
     fileContainer.appendChild(fileDetails);
     fileContainer.appendChild(fileActions);
@@ -2149,151 +2178,95 @@ function formatFileSize(bytes) {
     return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Image preview function
-function showImagePreview(fileData, messageId) {
-    const modal = document.createElement('div');
-    modal.className = 'image-preview-modal';
-    modal.innerHTML = `
-        <div class="modal-backdrop" onclick="this.parentElement.remove()"></div>
-        <div class="modal-content">
-            <div class="modal-header">
-                <h4>${fileData.original_name}</h4>
-                <button class="close-modal" onclick="this.closest('.image-preview-modal').remove()">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            <div class="modal-body">
-                <img src="${typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/')}chat/download-file/${messageId}" alt="${fileData.original_name}" class="preview-image">
-            </div>
-            <div class="modal-footer">
-                <a href="${typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/')}chat/download-file/${messageId}" download="${fileData.original_name}" class="btn btn-primary" onclick="handleIframeDownload(event, this)">
-                    <i class="fas fa-download"></i> Download
-                </a>
+// Open customer image modal for full-size preview
+function openCustomerImageModal(imgElement) {
+    const messageId = imgElement.getAttribute('data-message-id');
+    const fileName = imgElement.getAttribute('data-file-name');
+    const fileSize = imgElement.getAttribute('data-file-size');
+    const originalUrl = imgElement.getAttribute('data-original-url');
+
+    // Create modal HTML
+    const modalHTML = `
+        <div class="customer-image-preview-modal" id="customerImageModal">
+            <div class="customer-modal-dialog">
+                <div class="customer-modal-header">
+                    <h5 class="customer-modal-title">
+                        <i class="fas fa-image"></i>${fileName}
+                    </h5>
+                    <button type="button" class="customer-close-btn" onclick="closeCustomerImageModal()">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                <div class="customer-modal-body">
+                    <img src="${originalUrl}" class="customer-modal-image" alt="${fileName}">
+                    <div class="customer-image-info">
+                        <small class="text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            ${formatFileSize(fileSize)} • Click outside to close
+                        </small>
+                    </div>
+                </div>
+                <div class="customer-modal-footer">
+                    <a href="${originalUrl}" download="${fileName}" class="customer-download-btn" onclick="handleIframeDownload(event, this)">
+                        <i class="fas fa-download"></i>Download Image
+                    </a>
+                </div>
             </div>
         </div>
     `;
-    
-    // Add modal styles
-    const style = document.createElement('style');
-    style.textContent = `
-        .image-preview-modal {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            z-index: 9999;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+
+    // Remove existing modal if any
+    const existingModal = document.querySelector('.customer-image-preview-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+
+    // Add modal to body
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+    // Add click outside to close
+    const modal = document.querySelector('.customer-image-preview-modal');
+    modal.addEventListener('click', function(e) {
+        if (e.target === modal) {
+            closeCustomerImageModal();
         }
-        
-        .image-preview-modal .modal-backdrop {
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0);
-            cursor: pointer;
-        }
-        
-        .image-preview-modal .modal-content {
-            position: relative;
-            background: white;
-            border-radius: 12px;
-            max-width: 90vw;
-            max-height: 90vh;
-            overflow: hidden;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
-        }
-        
-        .image-preview-modal .modal-header {
-            padding: 15px 20px;
-            background: #f8f9fa;
-            border-bottom: 1px solid #e9ecef;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .image-preview-modal .modal-header h4 {
-            margin: 0;
-            font-size: 16px;
-            color: #333;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            max-width: 400px;
-        }
-        
-        .image-preview-modal .close-modal {
-            background: none;
-            border: none;
-            font-size: 18px;
-            cursor: pointer;
-            color: #666;
-            padding: 4px 8px;
-            border-radius: 4px;
-            transition: all 0.2s ease;
-        }
-        
-        .image-preview-modal .close-modal:hover {
-            background: #e9ecef;
-            color: #333;
-        }
-        
-        .image-preview-modal .modal-body {
-            padding: 0;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            max-height: 70vh;
-            overflow: hidden;
-        }
-        
-        .image-preview-modal .preview-image {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
-        
-        .image-preview-modal .modal-footer {
-            padding: 15px 20px;
-            background: #f8f9fa;
-            border-top: 1px solid #e9ecef;
-            text-align: center;
-        }
-        
-        .image-preview-modal .btn {
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 8px 16px;
-            border-radius: 6px;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s ease;
-        }
-        
-        .image-preview-modal .btn:hover {
-            background: #5a67d8;
-            color: white;
-            text-decoration: none;
-        }
-    `;
-    
-    document.head.appendChild(style);
-    document.body.appendChild(modal);
+    });
 
     // Close modal on escape key
     const closeOnEscape = (e) => {
         if (e.key === 'Escape') {
-            modal.remove();
-            document.removeEventListener('keydown', closeOnEscape);
+            closeCustomerImageModal();
         }
     };
     document.addEventListener('keydown', closeOnEscape);
+
+    // Store the escape handler so we can remove it later
+    modal.setAttribute('data-escape-handler', 'true');
+}
+
+// Close customer image modal
+function closeCustomerImageModal() {
+    const modal = document.querySelector('.customer-image-preview-modal');
+    if (modal) {
+        modal.remove();
+    }
+    // Remove escape key listener
+    document.removeEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            closeCustomerImageModal();
+        }
+    });
+}
+
+// Legacy function for backward compatibility (if called from old code)
+function showImagePreview(fileData, messageId) {
+    // Create a temporary image element with the required data attributes
+    const tempImg = document.createElement('img');
+    tempImg.setAttribute('data-message-id', messageId);
+    tempImg.setAttribute('data-file-name', fileData.original_name || 'Unknown File');
+    tempImg.setAttribute('data-file-size', fileData.compressed_size || fileData.file_size);
+    tempImg.setAttribute('data-original-url', fileData.file_url || `${typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/')}chat/download-file/${messageId}`);
+    
+    // Use the new modal function
+    openCustomerImageModal(tempImg);
 }

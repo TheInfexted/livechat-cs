@@ -317,8 +317,8 @@ class ChatController extends General
             
             $fileData = $processResult['file_data'];
             
-            // Create message text
-            $messageText = "sent a file: " . $fileData['original_name'];
+            // Create message text - empty for file uploads to avoid "sent a file" text
+            $messageText = "";
             
             // Store message in MongoDB with file data
             $mongoModel = new \App\Models\MongoMessageModel();

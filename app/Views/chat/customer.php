@@ -3,6 +3,7 @@
 <?= $this->section('content') ?>
 <link rel="stylesheet" href="<?= base_url('assets/css/date.css?v=' . time()) ?>">
 <link rel="stylesheet" href="<?= base_url('assets/css/file-upload.css?v=' . time()) ?>">
+<link rel="stylesheet" href="<?= base_url('assets/css/image-display.css?v=' . time()) ?>">
 
 <?php if (isset($is_fullscreen) && $is_fullscreen): ?>
 <!-- Fullscreen Mode CSS -->

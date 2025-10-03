@@ -336,8 +336,18 @@ body {
 
 .message-time {
     font-size: 12px !important;
-    opacity: 0.7 !important;
+    opacity: 0.8 !important;
     margin-top: 5px !important;
+    text-align: right !important;
+    color: #666 !important;
+}
+
+.message.customer .message-time {
+    color: #666 !important;
+}
+
+.message.agent .message-time {
+    color: #666 !important;
 }
 
 /* Typing indicator */
