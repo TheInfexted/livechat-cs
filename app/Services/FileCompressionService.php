@@ -33,6 +33,7 @@ class FileCompressionService
     private $allowedTypes = [
         'image' => ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'],
         'video' => ['mp4', 'avi', 'mov', 'wmv', 'flv', 'webm'],
+        'audio' => ['mp3', 'wav', 'ogg', 'webm', 'm4a', 'aac', 'flac'],
         'document' => ['pdf', 'doc', 'docx', 'txt', 'rtf', 'odt'],
         'archive' => ['zip', 'rar', '7z', 'tar', 'gz'],
         'other' => ['csv', 'xls', 'xlsx', 'ppt', 'pptx']
@@ -161,6 +162,7 @@ class FileCompressionService
         // Fallback to mime type detection
         if (strpos($mimeType, 'image/') === 0) return 'image';
         if (strpos($mimeType, 'video/') === 0) return 'video';
+        if (strpos($mimeType, 'audio/') === 0) return 'audio';
         if (strpos($mimeType, 'application/pdf') === 0) return 'document';
         
         return 'other';

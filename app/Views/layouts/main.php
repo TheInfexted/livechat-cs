@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Permissions-Policy" content="microphone=*, camera=(), geolocation=(), interest-cohort=()">
     <title><?= $title ?? 'Live Chat System' ?></title>
     
     <!-- Bootstrap 5 CSS -->

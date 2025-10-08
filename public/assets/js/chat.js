@@ -2100,6 +2100,153 @@ function renderCustomerImageMessage(fileData, messageId) {
     return imageContainer; // Return DOM element, not HTML string
 }
 
+// Fallback voice message player (in case voice-recording.js isn't loaded)
+function createFallbackVoicePlayer(fileData, messageId) {
+    
+    const player = document.createElement('div');
+    player.className = 'voice-message-player';
+    player.dataset.messageId = messageId;
+    
+    // Construct the correct file URL
+    let audioUrl = '';
+    if (fileData.file_url) {
+        audioUrl = fileData.file_url;
+    } else if (fileData.file_path) {
+        audioUrl = 'https://files.kopisugar.cc/livechat/default/chat/' + fileData.file_path;
+    } else {
+        const currentBaseUrl = typeof baseUrl !== 'undefined' ? baseUrl : (typeof window.location !== 'undefined' ? window.location.origin + '/' : '/');
+        audioUrl = currentBaseUrl + 'chat/download-file/' + messageId;
+    }
+    
+    player.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8f9fa; border-radius: 8px; max-width: 300px;">
+            <button class="voice-play-btn" onclick="playFallbackVoice('${audioUrl}', '${messageId}')" style="background: #667eea; border: none; color: white; cursor: pointer; padding: 10px; border-radius: 50%; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center;">
+                <i class="bi bi-play-fill"></i>
+            </button>
+            <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                <div style="width: 100%; height: 6px; background: #dee2e6; border-radius: 3px; position: relative; overflow: hidden; cursor: pointer;" onclick="seekFallbackVoice(event, '${messageId}')">
+                    <div id="voice-progress-${messageId}" style="height: 100%; background: #667eea; border-radius: 3px; transition: width 0.1s linear; width: 0%;"></div>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d; font-family: 'Courier New', monospace;">
+                    <span id="voice-current-${messageId}">00:00</span>
+                    <span id="voice-duration-${messageId}">00:00</span>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    return player;
+}
+
+// Fallback audio players storage
+const fallbackAudioPlayers = {};
+
+function playFallbackVoice(audioUrl, messageId) {
+    
+    // Stop other playing audio
+    Object.keys(fallbackAudioPlayers).forEach(id => {
+        if (id !== messageId && fallbackAudioPlayers[id]) {
+            fallbackAudioPlayers[id].pause();
+            fallbackAudioPlayers[id].currentTime = 0;
+            updateFallbackPlayButton(id, false);
+        }
+    });
+    
+    // Create audio element if it doesn't exist
+    if (!fallbackAudioPlayers[messageId]) {
+        const audio = new Audio(audioUrl);
+        fallbackAudioPlayers[messageId] = audio;
+        
+        // Update progress during playback
+        audio.addEventListener('timeupdate', () => {
+            updateFallbackVoiceProgress(messageId);
+        });
+        
+        // Handle playback end
+        audio.addEventListener('ended', () => {
+            updateFallbackPlayButton(messageId, false);
+            audio.currentTime = 0;
+            updateFallbackVoiceProgress(messageId);
+        });
+        
+        // Load metadata to get duration
+        audio.addEventListener('loadedmetadata', () => {
+            const durationEl = document.getElementById(`voice-duration-${messageId}`);
+            if (durationEl) {
+                durationEl.textContent = formatFallbackTime(audio.duration);
+            }
+        });
+        
+        // Add error handling
+        audio.addEventListener('error', (e) => {
+            updateFallbackPlayButton(messageId, false);
+            alert('Failed to load voice message. Please try again.');
+        });
+    }
+    
+    const audio = fallbackAudioPlayers[messageId];
+    
+    // Toggle play/pause
+    if (audio.paused) {
+        audio.play();
+        updateFallbackPlayButton(messageId, true);
+    } else {
+        audio.pause();
+        updateFallbackPlayButton(messageId, false);
+    }
+}
+
+function updateFallbackPlayButton(messageId, isPlaying) {
+    const playBtn = document.querySelector(`[data-message-id="${messageId}"] .voice-play-btn`);
+    if (playBtn) {
+        if (isPlaying) {
+            playBtn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+            playBtn.style.background = '#dc3545';
+        } else {
+            playBtn.innerHTML = '<i class="bi bi-play-fill"></i>';
+            playBtn.style.background = '#667eea';
+        }
+    }
+}
+
+function updateFallbackVoiceProgress(messageId) {
+    const audio = fallbackAudioPlayers[messageId];
+    if (!audio) return;
+    
+    const progressFill = document.getElementById(`voice-progress-${messageId}`);
+    const currentTime = document.getElementById(`voice-current-${messageId}`);
+    
+    if (progressFill) {
+        const progress = (audio.currentTime / audio.duration) * 100;
+        progressFill.style.width = `${progress}%`;
+    }
+    
+    if (currentTime) {
+        currentTime.textContent = formatFallbackTime(audio.currentTime);
+    }
+}
+
+function seekFallbackVoice(event, messageId) {
+    const audio = fallbackAudioPlayers[messageId];
+    if (!audio) return;
+    
+    const progressBar = event.currentTarget;
+    const rect = progressBar.getBoundingClientRect();
+    const clickX = event.clientX - rect.left;
+    const percentage = clickX / rect.width;
+    
+    audio.currentTime = percentage * audio.duration;
+    updateFallbackVoiceProgress(messageId);
+}
+
+function formatFallbackTime(seconds) {
+    if (isNaN(seconds)) return '00:00';
+    
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
 // File message rendering function
 function renderFileMessage(fileData, messageId) {
     // Ensure messageId is a string
@@ -2107,6 +2254,20 @@ function renderFileMessage(fileData, messageId) {
         messageId = messageId.toString();
     } else {
         messageId = String(messageId);
+    }
+    
+    // For voice messages, display voice player
+    if (fileData.file_type === 'voice' || fileData.file_type === 'audio' || 
+        (fileData.mime_type && fileData.mime_type.startsWith('audio/')) ||
+        fileData.original_name.match(/^voice_message_/)) {
+        
+        // Use the createVoiceMessagePlayer function from voice-recording.js
+        if (typeof createVoiceMessagePlayer === 'function') {
+            return createVoiceMessagePlayer(fileData, messageId);
+        } else {
+            // Create a simple fallback voice message player
+            return createFallbackVoicePlayer(fileData, messageId);
+        }
     }
     
     // For images, display them directly in chat

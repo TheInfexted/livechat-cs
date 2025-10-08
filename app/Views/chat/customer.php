@@ -4,6 +4,7 @@
 <link rel="stylesheet" href="<?= base_url('assets/css/date.css?v=' . time()) ?>">
 <link rel="stylesheet" href="<?= base_url('assets/css/file-upload.css?v=' . time()) ?>">
 <link rel="stylesheet" href="<?= base_url('assets/css/image-display.css?v=' . time()) ?>">
+<link rel="stylesheet" href="<?= base_url('assets/css/voice-recording.css?v=' . time()) ?>">
 
 <?php if (isset($is_fullscreen) && $is_fullscreen): ?>
 <!-- Fullscreen Mode CSS -->
@@ -121,6 +122,9 @@
                         <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
                             <i class="bi bi-paperclip"></i>
                         </button>
+                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                            <i class="bi bi-mic-fill"></i>
+                        </button>
                         <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
                         <div class="input-group-append">
                             <button type="submit" class="btn btn-send">Send</button>
@@ -146,6 +150,34 @@
                         </span>
                         <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
                             <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Voice Recording UI -->
+                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                    <div class="recording-content">
+                        <div class="recording-indicator">
+                            <i class="bi bi-mic-fill recording-icon"></i>
+                            <span class="recording-text">Recording...</span>
+                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                        </div>
+                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Voice Message Preview (before sending) -->
+                <div id="voicePreview" class="voice-preview" style="display: none;">
+                    <div class="preview-content">
+                        <div class="voice-info">
+                            <i class="bi bi-mic-fill" style="color: #667eea;"></i>
+                            <span class="voice-duration" id="voiceDuration">00:00</span>
+                            <span class="voice-label">Voice Message</span>
+                        </div>
+                        <button type="button" class="btn-remove-voice" onclick="removeVoicePreview()">
+                            <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </div>
@@ -918,4 +950,5 @@
     }
 
 </script>
+<script src="<?= base_url('assets/js/voice-recording.js?v=' . time()) ?>"></script>
 <?= $this->endSection() ?>

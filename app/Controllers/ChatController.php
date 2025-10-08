@@ -317,6 +317,12 @@ class ChatController extends General
             
             $fileData = $processResult['file_data'];
             
+            // Check if this is a voice message
+            $isVoiceMessage = $this->request->getPost('is_voice_message') === '1';
+            if ($isVoiceMessage) {
+                $fileData['file_type'] = 'voice';
+            }
+            
             // Create message text - empty for file uploads to avoid "sent a file" text
             $messageText = "";
             
