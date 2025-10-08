@@ -119,7 +119,7 @@
                     <div class="input-group">
                         <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
                         <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
-                            <i class="fas fa-paperclip"></i>
+                            <i class="bi bi-paperclip"></i>
                         </button>
                         <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
                         <div class="input-group-append">

@@ -38,6 +38,7 @@ body {
     display: flex;
     align-items: center;
     gap: 12px;
+    height: 100%;
 }
 
 .btn-close-chat {
@@ -66,11 +67,13 @@ body {
     font-size: 16px;
     cursor: pointer;
     transition: all 0.3s;
-    display: inline-flex;
+    display: flex;
     align-items: center;
     justify-content: center;
     min-width: 36px;
     height: 32px;
+    margin: 0;
+    vertical-align: middle;
 }
 
 .btn-notification-toggle:hover {
@@ -326,7 +329,6 @@ body {
     cursor: pointer;
     transition: all 0.3s;
     text-decoration: none;
-    display: inline-block;
 }
 
 .btn-primary {
@@ -571,12 +573,19 @@ body {
         padding: 15px !important;
     }
     
-    .chat-input-area, .quick-actions-toolbar {
+    .chat-input-area {
         flex-shrink: 0 !important; 
         position: sticky !important;
         bottom: 0 !important;
         background: white !important;
         z-index: 10 !important;
+    }
+    
+    .quick-actions-toolbar {
+        flex-shrink: 0 !important; 
+        background: white !important;
+        z-index: 9 !important;
+        position: relative !important;
     }
     
     .dashboard-content {
@@ -635,12 +644,19 @@ body {
         padding: 15px !important; /* Reduce padding on mobile */
     }
     
-    .chat-input-area, .quick-actions-toolbar {
+    .chat-input-area {
         flex-shrink: 0 !important; /* Prevent input areas from shrinking */
         position: sticky !important;
         bottom: 0 !important;
         background: white !important;
         z-index: 10 !important;
+    }
+    
+    .quick-actions-toolbar {
+        flex-shrink: 0 !important; 
+        background: white !important;
+        z-index: 9 !important;
+        position: relative !important;
     }
     
     .dashboard-content {
@@ -1216,11 +1232,13 @@ body {
 
 /* Quick Actions Toolbar (Customer) */
 .quick-actions-toolbar {
-    padding: 0px;
+    padding: 12px 20px;
     background: #f8f9fa;
     border-top: 1px solid #e9ecef;
-    padding: 12px 20px;
+    border-bottom: 1px solid #e9ecef;
     flex-shrink: 0;
+    position: relative;
+    z-index: 9;
 }
 
 .quick-actions-buttons {
@@ -1267,6 +1285,34 @@ body {
 
 .show-quick-actions-btn:hover {
     background: #138496;
+}
+
+/* Widget/iframe specific fixes */
+body {
+    overflow-x: hidden;
+}
+
+/* Ensure proper stacking order in widget mode */
+.customer-chat .chat-window {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+}
+
+.customer-chat .messages-container {
+    flex: 1;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+.customer-chat .quick-actions-toolbar {
+    order: 1;
+    flex-shrink: 0;
+}
+
+.customer-chat .chat-input-area {
+    order: 2;
+    flex-shrink: 0;
 }
 
 /* Customer chat date separators */
