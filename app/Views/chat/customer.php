@@ -15,6 +15,9 @@
         <h3>Customer Support</h3>
         <div class="header-actions">
             <span class="status-indicator" id="connectionStatus">Offline</span>
+            <button class="btn btn-notification-toggle" id="notificationToggle" onclick="toggleNotificationSound()" title="Toggle notification sound">
+                <i class="bi bi-bell-fill" id="notificationIcon"></i>
+            </button>
             <button class="btn btn-close-chat" id="customerCloseBtn" onclick="closeCustomerChat()" style="display: none;">Leave Chat</button>
             <?php if (isset($is_fullscreen) && $is_fullscreen): ?>
             <button class="btn btn-fullscreen-close" id="fullscreenCloseBtn" onclick="closeFullscreen()" title="Close Chat">

@@ -57,6 +57,40 @@ body {
     transform: translateY(-1px);
 }
 
+.btn-notification-toggle {
+    background: rgba(255, 255, 255, 0.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: white;
+    padding: 6px 10px;
+    border-radius: 6px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: all 0.3s;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 36px;
+    height: 32px;
+}
+
+.btn-notification-toggle:hover {
+    background: rgba(255, 255, 255, 0.3);
+    border-color: rgba(255, 255, 255, 0.5);
+    transform: translateY(-1px);
+}
+
+.btn-notification-toggle:active {
+    transform: scale(0.95);
+}
+
+.btn-notification-toggle i {
+    transition: all 0.2s;
+}
+
+.btn-notification-toggle:hover i {
+    transform: scale(1.1);
+}
+
 .chat-header h3 {
     font-size: 18px;
     font-weight: 600;
@@ -265,7 +299,7 @@ body {
 
 #messageForm {
     display: flex;
-    gap: 10px;
+    gap: 15px;
 }
 
 #messageInput {

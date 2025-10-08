@@ -1708,10 +1708,76 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
+// Notification sound state (default: enabled)
+let notificationSoundEnabled = true;
+
+// Initialize notification preference from localStorage
+function initNotificationPreference() {
+    const savedPreference = localStorage.getItem('chatNotificationSound');
+    if (savedPreference !== null) {
+        notificationSoundEnabled = savedPreference === 'true';
+    }
+    updateNotificationIcon();
+}
+
+// Toggle notification sound on/off
+function toggleNotificationSound() {
+    notificationSoundEnabled = !notificationSoundEnabled;
+    localStorage.setItem('chatNotificationSound', notificationSoundEnabled.toString());
+    updateNotificationIcon();
+}
+
+// Update notification icon based on state
+function updateNotificationIcon() {
+    const icon = document.getElementById('notificationIcon');
+    if (icon) {
+        if (notificationSoundEnabled) {
+            icon.className = 'bi bi-bell-fill';
+        } else {
+            icon.className = 'bi bi-bell-slash-fill';
+        }
+    }
+}
+
+// Play notification sound using Web Audio API
 function playNotificationSound() {
-    // Optional: Add notification sound
-    // const audio = new Audio('/assets/sounds/notification.mp3');
-    // audio.play();
+    if (!notificationSoundEnabled) {
+        return; // Don't play if notifications are disabled
+    }
+    
+    try {
+        // Create audio context
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        
+        // Create oscillator for beep sound
+        const oscillator = audioContext.createOscillator();
+        const gainNode = audioContext.createGain();
+        
+        // Connect nodes
+        oscillator.connect(gainNode);
+        gainNode.connect(audioContext.destination);
+        
+        // Configure the beep sound
+        oscillator.frequency.value = 800; // Frequency in Hz (higher = higher pitch)
+        oscillator.type = 'sine'; // Sine wave for smooth sound
+        
+        // Set volume envelope (fade in/out for smoother sound)
+        gainNode.gain.setValueAtTime(0, audioContext.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.01); // Fade in
+        gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.15); // Fade out
+        
+        // Play the sound
+        oscillator.start(audioContext.currentTime);
+        oscillator.stop(audioContext.currentTime + 0.15); // Duration: 150ms
+        
+        // Clean up
+        setTimeout(() => {
+            audioContext.close();
+        }, 200);
+    } catch (error) {
+        // Silently fail if Web Audio API is not supported
+        console.warn('Web Audio API not supported or failed:', error);
+    }
 }
 
 // Message refresh for admin to catch system messages in real-time
@@ -1934,6 +2000,9 @@ function showHistoryLoadedNotification(messageCount) {
 // Initialize WebSocket on page load
 document.addEventListener('DOMContentLoaded', async function() {
     displayedMessages.clear();
+    
+    // Initialize notification preference
+    initNotificationPreference();
     
     // Initialize chat container classes
     initializeChatContainer();
