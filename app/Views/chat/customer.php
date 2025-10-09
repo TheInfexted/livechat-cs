@@ -781,9 +781,70 @@
                             
                             <div class="chat-input-area">
                                 <form id="messageForm">
-                                    <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-                                    <button type="submit" class="btn btn-send">Send</button>
+                                    <div class="input-group">
+                                        <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
+                                        <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
+                                            <i class="bi bi-paperclip"></i>
+                                        </button>
+                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                            <i class="bi bi-mic-fill"></i>
+                                        </button>
+                                        <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
+                                        <div class="input-group-append">
+                                            <button type="submit" class="btn btn-send">Send</button>
+                                        </div>
+                                    </div>
                                 </form>
+                                
+                                <!-- File Upload Progress -->
+                                <div id="fileUploadProgress" class="file-upload-progress" style="display: none;">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill"></div>
+                                    </div>
+                                    <span class="progress-text">Uploading file...</span>
+                                </div>
+                                
+                                <!-- File Preview -->
+                                <div id="filePreview" class="file-preview" style="display: none;">
+                                    <div class="preview-content">
+                                        <span class="file-info">
+                                            <i class="file-icon"></i>
+                                            <span class="file-name"></span>
+                                            <span class="file-size"></span>
+                                        </span>
+                                        <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Voice Recording UI -->
+                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                    <div class="recording-content">
+                                        <div class="recording-indicator">
+                                            <i class="bi bi-mic-fill recording-icon"></i>
+                                            <span class="recording-text">Recording...</span>
+                                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                                        </div>
+                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Voice Message Preview (before sending) -->
+                                <div id="voicePreview" class="voice-preview" style="display: none;">
+                                    <div class="preview-content">
+                                        <div class="voice-info">
+                                            <i class="bi bi-mic-fill" style="color: #667eea;"></i>
+                                            <span class="voice-duration" id="voiceDuration">00:00</span>
+                                            <span class="voice-label">Voice Message</span>
+                                        </div>
+                                        <button type="button" class="btn-remove-voice" onclick="removeVoicePreview()">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     `;
@@ -792,7 +853,7 @@
                     initWebSocket();
                     initializeMessageForm();
                     
-                    // Load quick actions for the customer
+                    // Load quick actions and initialize features
                     setTimeout(() => {
                         fetchQuickActions();
                         // Initialize typing functionality
@@ -803,7 +864,14 @@
                         if (typeof loadChatHistory === 'function') {
                             loadChatHistory();
                         }
-                    }, 1000);
+                    }, 300);
+                    
+                    // Re-initialize voice recording immediately
+                    setTimeout(() => {
+                        if (typeof initializeVoiceRecording === 'function') {
+                            initializeVoiceRecording();
+                        }
+                    }, 100);
                 }
             } else {
                 // Show error and revert to previous state

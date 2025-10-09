@@ -680,6 +680,11 @@ window.initializeVoiceRecording = initializeVoiceRecording;
 
 // Initialize voice recording when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
-    // Small delay to ensure all elements are loaded
-    setTimeout(initializeVoiceRecording, 500);
+    // Initialize immediately if elements are available, otherwise wait briefly
+    if (document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn')) {
+        initializeVoiceRecording();
+    } else {
+        // Small delay to ensure dynamically loaded elements are available
+        setTimeout(initializeVoiceRecording, 100);
+    }
 });

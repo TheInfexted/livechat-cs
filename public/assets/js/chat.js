@@ -791,17 +791,83 @@ function startNewChatForLoggedUser(userRoleParam, externalUsernameParam, externa
                             <span></span>
                         </div>
                         
-                        <div class="chat-input-area">
-                            <form id="messageForm">
-                                <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-                                <button type="submit" class="btn btn-send">Send</button>
-                            </form>
+                            <div class="chat-input-area">
+                                <form id="messageForm">
+                                    <div class="input-group">
+                                        <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
+                                        <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
+                                            <i class="bi bi-paperclip"></i>
+                                        </button>
+                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                            <i class="bi bi-mic-fill"></i>
+                                        </button>
+                                        <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
+                                        <div class="input-group-append">
+                                            <button type="submit" class="btn btn-send">Send</button>
+                                        </div>
+                                    </div>
+                                </form>
+                                
+                                <!-- File Upload Progress -->
+                                <div id="fileUploadProgress" class="file-upload-progress" style="display: none;">
+                                    <div class="progress-bar">
+                                        <div class="progress-fill"></div>
+                                    </div>
+                                    <span class="progress-text">Uploading file...</span>
+                                </div>
+                                
+                                <!-- File Preview -->
+                                <div id="filePreview" class="file-preview" style="display: none;">
+                                    <div class="preview-content">
+                                        <span class="file-info">
+                                            <i class="file-icon"></i>
+                                            <span class="file-name"></span>
+                                            <span class="file-size"></span>
+                                        </span>
+                                        <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Voice Recording UI -->
+                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                    <div class="recording-content">
+                                        <div class="recording-indicator">
+                                            <i class="bi bi-mic-fill recording-icon"></i>
+                                            <span class="recording-text">Recording...</span>
+                                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                                        </div>
+                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
+                                <!-- Voice Message Preview (before sending) -->
+                                <div id="voicePreview" class="voice-preview" style="display: none;">
+                                    <div class="preview-content">
+                                        <div class="voice-info">
+                                            <i class="bi bi-mic-fill" style="color: #667eea;"></i>
+                                            <span class="voice-duration" id="voiceDuration">00:00</span>
+                                            <span class="voice-label">Voice Message</span>
+                                        </div>
+                                        <button type="button" class="btn-remove-voice" onclick="removeVoicePreview()">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                    </div>
-                `;
-                
-                // Initialize WebSocket and chat functionality
-                initWebSocket();
+                    `;
+                    
+                    // Initialize WebSocket and chat functionality
+                    initWebSocket();
+                    
+                    // Re-initialize voice recording immediately after creating the UI
+                    if (typeof initializeVoiceRecording === 'function') {
+                        setTimeout(initializeVoiceRecording, 100);
+                    }
                 
                 // Initialize the message form with a slight delay
                 setTimeout(() => {
@@ -1140,9 +1206,70 @@ document.addEventListener('submit', async function(e) {
                                 
                                 <div class="chat-input-area">
                                     <form id="messageForm">
-                                        <input type="text" id="messageInput" placeholder="Type your message..." autocomplete="off">
-                                        <button type="submit" class="btn btn-send">Send</button>
+                                        <div class="input-group">
+                                            <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
+                                            <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
+                                                <i class="bi bi-paperclip"></i>
+                                            </button>
+                                            <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                                <i class="bi bi-mic-fill"></i>
+                                            </button>
+                                            <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
+                                            <div class="input-group-append">
+                                                <button type="submit" class="btn btn-send">Send</button>
+                                            </div>
+                                        </div>
                                     </form>
+                                    
+                                    <!-- File Upload Progress -->
+                                    <div id="fileUploadProgress" class="file-upload-progress" style="display: none;">
+                                        <div class="progress-bar">
+                                            <div class="progress-fill"></div>
+                                        </div>
+                                        <span class="progress-text">Uploading file...</span>
+                                    </div>
+                                    
+                                    <!-- File Preview -->
+                                    <div id="filePreview" class="file-preview" style="display: none;">
+                                        <div class="preview-content">
+                                            <span class="file-info">
+                                                <i class="file-icon"></i>
+                                                <span class="file-name"></span>
+                                                <span class="file-size"></span>
+                                            </span>
+                                            <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
+                                                <i class="fas fa-times"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Voice Recording UI -->
+                                    <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                        <div class="recording-content">
+                                            <div class="recording-indicator">
+                                                <i class="bi bi-mic-fill recording-icon"></i>
+                                                <span class="recording-text">Recording...</span>
+                                                <span class="recording-timer" id="recordingTimer">00:00</span>
+                                            </div>
+                                            <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
+                                    <!-- Voice Message Preview (before sending) -->
+                                    <div id="voicePreview" class="voice-preview" style="display: none;">
+                                        <div class="preview-content">
+                                            <div class="voice-info">
+                                                <i class="bi bi-mic-fill" style="color: #667eea;"></i>
+                                                <span class="voice-duration" id="voiceDuration">00:00</span>
+                                                <span class="voice-label">Voice Message</span>
+                                            </div>
+                                            <button type="button" class="btn-remove-voice" onclick="removeVoicePreview()">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         `;
@@ -1150,6 +1277,11 @@ document.addEventListener('submit', async function(e) {
                         // Re-initialize WebSocket connection with the new session ID
                         initWebSocket();
                         initializeMessageForm();
+                        
+                        // Re-initialize voice recording immediately after creating the UI
+                        if (typeof initializeVoiceRecording === 'function') {
+                            setTimeout(initializeVoiceRecording, 100);
+                        }
                         
                         // IMPORTANT: Re-register with WebSocket using the new session ID
                         // Wait a moment for WebSocket to connect, then register with session
