@@ -252,7 +252,7 @@
 
 .voice-time-info {
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
     font-size: 11px;
     color: #6c757d;
     font-family: 'Courier New', monospace;

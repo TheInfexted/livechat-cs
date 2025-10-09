@@ -2282,13 +2282,22 @@ function createFallbackVoicePlayer(fileData, messageId) {
                 <div style="width: 100%; height: 6px; background: #dee2e6; border-radius: 3px; position: relative; overflow: hidden; cursor: pointer;" onclick="seekFallbackVoice(event, '${messageId}')">
                     <div id="voice-progress-${messageId}" style="height: 100%; background: #667eea; border-radius: 3px; transition: width 0.1s linear; width: 0%;"></div>
                 </div>
-                <div style="display: flex; justify-content: space-between; font-size: 11px; color: #6c757d; font-family: 'Courier New', monospace;">
-                    <span id="voice-current-${messageId}">00:00</span>
-                    <span id="voice-duration-${messageId}">00:00</span>
+                <div style="display: flex; justify-content: flex-start; font-size: 11px; color: #6c757d; font-family: 'Courier New', monospace;">
+                    <span id="voice-time-${messageId}">00:00</span>
                 </div>
             </div>
         </div>
     `;
+    
+    // Pre-load the audio to get duration immediately
+    const preloadAudio = new Audio(audioUrl);
+    preloadAudio.addEventListener('loadedmetadata', () => {
+        const timeEl = document.getElementById(`voice-time-${messageId}`);
+        if (timeEl && preloadAudio.duration && !isNaN(preloadAudio.duration)) {
+            timeEl.textContent = formatFallbackTime(preloadAudio.duration);
+        }
+    });
+    preloadAudio.load();
     
     return player;
 }
@@ -2320,17 +2329,42 @@ function playFallbackVoice(audioUrl, messageId) {
         // Handle playback end
         audio.addEventListener('ended', () => {
             updateFallbackPlayButton(messageId, false);
+            
+            // Reset to total duration when playback ends
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && audio._totalDuration) {
+                timeEl.textContent = formatFallbackTime(audio._totalDuration);
+            }
+            
+            // Reset progress bar
+            const progressFill = document.getElementById(`voice-progress-${messageId}`);
+            if (progressFill) {
+                progressFill.style.width = '0%';
+            }
+            
+            // Reset audio position AFTER updating the display
             audio.currentTime = 0;
-            updateFallbackVoiceProgress(messageId);
         });
         
         // Load metadata to get duration
         audio.addEventListener('loadedmetadata', () => {
-            const durationEl = document.getElementById(`voice-duration-${messageId}`);
-            if (durationEl) {
-                durationEl.textContent = formatFallbackTime(audio.duration);
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && audio.duration && !isNaN(audio.duration)) {
+                // Store the total duration for later use
+                audio._totalDuration = audio.duration;
+                // Show total duration initially
+                timeEl.textContent = formatFallbackTime(audio.duration);
             }
         });
+        
+        // Fallback: Try to get duration after a short delay if metadata didn't load
+        setTimeout(() => {
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && timeEl.textContent === '00:00' && audio.duration && !isNaN(audio.duration)) {
+                audio._totalDuration = audio.duration;
+                timeEl.textContent = formatFallbackTime(audio.duration);
+            }
+        }, 1000);
         
         // Add error handling
         audio.addEventListener('error', (e) => {
@@ -2343,6 +2377,17 @@ function playFallbackVoice(audioUrl, messageId) {
     
     // Toggle play/pause
     if (audio.paused) {
+        // Reset to start of playback when starting
+        audio.currentTime = 0;
+        const timeEl = document.getElementById(`voice-time-${messageId}`);
+        if (timeEl) {
+            timeEl.textContent = formatFallbackTime(0);
+        }
+        const progressFill = document.getElementById(`voice-progress-${messageId}`);
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        
         audio.play();
         updateFallbackPlayButton(messageId, true);
     } else {
@@ -2369,15 +2414,16 @@ function updateFallbackVoiceProgress(messageId) {
     if (!audio) return;
     
     const progressFill = document.getElementById(`voice-progress-${messageId}`);
-    const currentTime = document.getElementById(`voice-current-${messageId}`);
+    const timeEl = document.getElementById(`voice-time-${messageId}`);
     
     if (progressFill) {
         const progress = (audio.currentTime / audio.duration) * 100;
         progressFill.style.width = `${progress}%`;
     }
     
-    if (currentTime) {
-        currentTime.textContent = formatFallbackTime(audio.currentTime);
+    if (timeEl && !audio.paused) {
+        // Only show current time during active playback
+        timeEl.textContent = formatFallbackTime(audio.currentTime);
     }
 }
 

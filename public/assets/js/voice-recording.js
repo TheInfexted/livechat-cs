@@ -527,12 +527,11 @@ function createVoiceMessagePlayer(fileData, messageId) {
     progressFill.id = `voice-progress-${messageId}`;
     progressBar.appendChild(progressFill);
     
-    // Time info
+    // Time info - single display for WhatsApp/Telegram style
     const timeInfo = document.createElement('div');
     timeInfo.className = 'voice-time-info';
     timeInfo.innerHTML = `
-        <span id="voice-current-${messageId}">00:00</span>
-        <span id="voice-duration-${messageId}">00:00</span>
+        <span id="voice-time-${messageId}">00:00</span>
     `;
     
     progressContainer.appendChild(progressBar);
@@ -540,6 +539,16 @@ function createVoiceMessagePlayer(fileData, messageId) {
     
     player.appendChild(playBtn);
     player.appendChild(progressContainer);
+    
+    // Pre-load the audio to get duration immediately
+    const preloadAudio = new Audio(audioUrl);
+    preloadAudio.addEventListener('loadedmetadata', () => {
+        const timeEl = document.getElementById(`voice-time-${messageId}`);
+        if (timeEl && preloadAudio.duration && !isNaN(preloadAudio.duration)) {
+            timeEl.textContent = formatAudioDuration(preloadAudio.duration);
+        }
+    });
+    preloadAudio.load();
     
     return player;
 }
@@ -582,17 +591,42 @@ function toggleVoicePlayback(messageId, audioUrl) {
         // Handle playback end
         audio.addEventListener('ended', () => {
             updatePlayButton(messageId, false);
+            
+            // Reset to total duration when playback ends
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && audio._totalDuration) {
+                timeEl.textContent = formatAudioDuration(audio._totalDuration);
+            }
+            
+            // Reset progress bar
+            const progressFill = document.getElementById(`voice-progress-${messageId}`);
+            if (progressFill) {
+                progressFill.style.width = '0%';
+            }
+            
+            // Reset audio position AFTER updating the display
             audio.currentTime = 0;
-            updateVoiceProgress(messageId);
         });
         
         // Load metadata to get duration
         audio.addEventListener('loadedmetadata', () => {
-            const durationEl = document.getElementById(`voice-duration-${messageId}`);
-            if (durationEl) {
-                durationEl.textContent = formatAudioDuration(audio.duration);
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && audio.duration && !isNaN(audio.duration)) {
+                // Store the total duration for later use
+                audio._totalDuration = audio.duration;
+                // Show total duration initially
+                timeEl.textContent = formatAudioDuration(audio.duration);
             }
         });
+        
+        // Fallback: Try to get duration after a short delay if metadata didn't load
+        setTimeout(() => {
+            const timeEl = document.getElementById(`voice-time-${messageId}`);
+            if (timeEl && timeEl.textContent === '00:00' && audio.duration && !isNaN(audio.duration)) {
+                audio._totalDuration = audio.duration;
+                timeEl.textContent = formatAudioDuration(audio.duration);
+            }
+        }, 1000);
         
     }
     
@@ -600,6 +634,17 @@ function toggleVoicePlayback(messageId, audioUrl) {
     
     // Toggle play/pause
     if (audio.paused) {
+        // Reset to start of playback when starting
+        audio.currentTime = 0;
+        const timeEl = document.getElementById(`voice-time-${messageId}`);
+        if (timeEl) {
+            timeEl.textContent = formatAudioDuration(0);
+        }
+        const progressFill = document.getElementById(`voice-progress-${messageId}`);
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        
         audio.play();
         updatePlayButton(messageId, true);
     } else {
@@ -632,15 +677,16 @@ function updateVoiceProgress(messageId) {
     if (!audio) return;
     
     const progressFill = document.getElementById(`voice-progress-${messageId}`);
-    const currentTime = document.getElementById(`voice-current-${messageId}`);
+    const timeEl = document.getElementById(`voice-time-${messageId}`);
     
     if (progressFill) {
         const progress = (audio.currentTime / audio.duration) * 100;
         progressFill.style.width = `${progress}%`;
     }
     
-    if (currentTime) {
-        currentTime.textContent = formatAudioDuration(audio.currentTime);
+    if (timeEl && !audio.paused) {
+        // Only show current time during active playback
+        timeEl.textContent = formatAudioDuration(audio.currentTime);
     }
 }
 
