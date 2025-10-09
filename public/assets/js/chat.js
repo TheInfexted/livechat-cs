@@ -792,13 +792,27 @@ function startNewChatForLoggedUser(userRoleParam, externalUsernameParam, externa
                         </div>
                         
                             <div class="chat-input-area">
+                                <!-- Voice Recording UI -->
+                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                    <div class="recording-content">
+                                        <div class="recording-indicator">
+                                            <i class="bi bi-mic-fill recording-icon"></i>
+                                            <span class="recording-text">Recording...</span>
+                                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                                        </div>
+                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
                                 <form id="messageForm">
                                     <div class="input-group">
                                         <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
                                         <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
                                             <i class="bi bi-paperclip"></i>
                                         </button>
-                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" title="Hold to record voice message">
                                             <i class="bi bi-mic-fill"></i>
                                         </button>
                                         <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
@@ -830,20 +844,6 @@ function startNewChatForLoggedUser(userRoleParam, externalUsernameParam, externa
                                     </div>
                                 </div>
                                 
-                                <!-- Voice Recording UI -->
-                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
-                                    <div class="recording-content">
-                                        <div class="recording-indicator">
-                                            <i class="bi bi-mic-fill recording-icon"></i>
-                                            <span class="recording-text">Recording...</span>
-                                            <span class="recording-timer" id="recordingTimer">00:00</span>
-                                        </div>
-                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
-                                            <i class="bi bi-x-lg"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
                                 <!-- Voice Message Preview (before sending) -->
                                 <div id="voicePreview" class="voice-preview" style="display: none;">
                                     <div class="preview-content">
@@ -865,13 +865,22 @@ function startNewChatForLoggedUser(userRoleParam, externalUsernameParam, externa
                     initWebSocket();
                     
                     // Re-initialize voice recording immediately after creating the UI
-                    if (typeof initializeVoiceRecording === 'function') {
+                    if (typeof window.reinitializeVoiceRecording === 'function') {
+                        window.reinitializeVoiceRecording();
+                    } else if (typeof initializeVoiceRecording === 'function') {
                         setTimeout(initializeVoiceRecording, 100);
                     }
                 
                 // Initialize the message form with a slight delay
                 setTimeout(() => {
                     initializeMessageForm();
+                    
+                    // Re-initialize voice recording after form is cloned (this removes event listeners)
+                    if (typeof window.reinitializeVoiceRecording === 'function') {
+                        setTimeout(() => {
+                            window.reinitializeVoiceRecording();
+                        }, 100);
+                    }
                     
                     // Load quick actions if available
                     if (typeof fetchQuickActions === 'function') {
@@ -1205,13 +1214,27 @@ document.addEventListener('submit', async function(e) {
                                 </div>
                                 
                                 <div class="chat-input-area">
+                                    <!-- Voice Recording UI -->
+                                    <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                        <div class="recording-content">
+                                            <div class="recording-indicator">
+                                                <i class="bi bi-mic-fill recording-icon"></i>
+                                                <span class="recording-text">Recording...</span>
+                                                <span class="recording-timer" id="recordingTimer">00:00</span>
+                                            </div>
+                                            <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                                <i class="bi bi-x-lg"></i>
+                                            </button>
+                                        </div>
+                                    </div>
+                                    
                                     <form id="messageForm">
                                         <div class="input-group">
                                             <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
                                             <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
                                                 <i class="bi bi-paperclip"></i>
                                             </button>
-                                            <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                            <button type="button" class="voice-record-btn" id="voiceRecordBtn" title="Hold to record voice message">
                                                 <i class="bi bi-mic-fill"></i>
                                             </button>
                                             <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
@@ -1243,20 +1266,6 @@ document.addEventListener('submit', async function(e) {
                                         </div>
                                     </div>
                                     
-                                    <!-- Voice Recording UI -->
-                                    <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
-                                        <div class="recording-content">
-                                            <div class="recording-indicator">
-                                                <i class="bi bi-mic-fill recording-icon"></i>
-                                                <span class="recording-text">Recording...</span>
-                                                <span class="recording-timer" id="recordingTimer">00:00</span>
-                                            </div>
-                                            <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
-                                                <i class="bi bi-x-lg"></i>
-                                            </button>
-                                        </div>
-                                    </div>
-                                    
                                     <!-- Voice Message Preview (before sending) -->
                                     <div id="voicePreview" class="voice-preview" style="display: none;">
                                         <div class="preview-content">
@@ -1278,10 +1287,14 @@ document.addEventListener('submit', async function(e) {
                         initWebSocket();
                         initializeMessageForm();
                         
-                        // Re-initialize voice recording immediately after creating the UI
-                        if (typeof initializeVoiceRecording === 'function') {
-                            setTimeout(initializeVoiceRecording, 100);
-                        }
+                        // Re-initialize voice recording after form is cloned (this removes event listeners)
+                        setTimeout(() => {
+                            if (typeof window.reinitializeVoiceRecording === 'function') {
+                                window.reinitializeVoiceRecording();
+                            } else if (typeof initializeVoiceRecording === 'function') {
+                                initializeVoiceRecording();
+                            }
+                        }, 100);
                         
                         // IMPORTANT: Re-register with WebSocket using the new session ID
                         // Wait a moment for WebSocket to connect, then register with session
@@ -2206,6 +2219,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                 // Wait a moment for WebSocket to connect before initializing form
                 setTimeout(() => {
                     initializeMessageForm();
+                    
+                    // Re-initialize voice recording after form is cloned (this removes event listeners)
+                    setTimeout(() => {
+                        if (typeof window.reinitializeVoiceRecording === 'function') {
+                            window.reinitializeVoiceRecording();
+                        }
+                    }, 100);
                     
                     // CRITICAL FIX: Load chat history directly on page refresh
                     // Don't wait only for WebSocket 'connected' event

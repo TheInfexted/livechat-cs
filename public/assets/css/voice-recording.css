@@ -10,11 +10,18 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 2.25rem;
+    min-width: 3rem; /* Increased from 2.25rem */
     height: 4rem;
     border-radius: 0;
-    padding: 12px 16px;
+    padding: 12px 20px; /* Increased padding */
     flex-shrink: 0;
+    /* Make it easier to hold without accidentally leaving */
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    /* Add a subtle border to define the clickable area better */
+    border: 1px solid transparent !important;
 }
 
 .voice-record-btn:hover,
@@ -42,29 +49,36 @@
 .voice-record-btn.recording {
     background: #dc3545 !important;
     color: white !important;
-    animation: pulse 1.5s infinite;
+    animation: recordingPulse 1.5s ease-in-out infinite;
+    /* Add a visual indicator that it's recording */
+    box-shadow: 0 0 10px rgba(220, 53, 69, 0.5) !important;
+    border: 2px solid #dc3545 !important;
 }
 
-@keyframes pulse {
+@keyframes recordingPulse {
     0%, 100% {
         opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 0 0 0 rgba(220, 53, 69, 0.7);
     }
     50% {
-        opacity: 0.7;
+        opacity: 0.85;
+        transform: scale(1.05);
+        box-shadow: 0 0 0 8px rgba(220, 53, 69, 0);
     }
 }
 
 /* Voice Recording UI */
 .voice-recording-ui {
-    margin: 10px 0;
+    margin: 0 0 10px 0; /* Only bottom margin, no top margin */
     padding: 12px 16px;
     background: #fff3cd;
     border: 1px solid #ffc107;
     border-radius: 8px;
-    animation: slideDown 0.3s ease;
+    animation: slideDownFromAbove 0.3s ease;
 }
 
-@keyframes slideDown {
+@keyframes slideDownFromAbove {
     from {
         opacity: 0;
         transform: translateY(-10px);

@@ -116,13 +116,27 @@
             </div>
             
             <div class="chat-input-area">
+                <!-- Voice Recording UI -->
+                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                    <div class="recording-content">
+                        <div class="recording-indicator">
+                            <i class="bi bi-mic-fill recording-icon"></i>
+                            <span class="recording-text">Recording...Move away from button to cancel</span>
+                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                        </div>
+                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                            <i class="bi bi-x-lg"></i>
+                        </button>
+                    </div>
+                </div>
+                
                 <form id="messageForm">
                     <div class="input-group">
                         <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
                         <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
                             <i class="bi bi-paperclip"></i>
                         </button>
-                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" title="Hold to record voice message">
                             <i class="bi bi-mic-fill"></i>
                         </button>
                         <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
@@ -150,20 +164,6 @@
                         </span>
                         <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
                             <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Voice Recording UI -->
-                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
-                    <div class="recording-content">
-                        <div class="recording-indicator">
-                            <i class="bi bi-mic-fill recording-icon"></i>
-                            <span class="recording-text">Recording...</span>
-                            <span class="recording-timer" id="recordingTimer">00:00</span>
-                        </div>
-                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
-                            <i class="bi bi-x-lg"></i>
                         </button>
                     </div>
                 </div>
@@ -781,13 +781,27 @@
                             </div>
                             
                             <div class="chat-input-area">
+                                <!-- Voice Recording UI -->
+                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
+                                    <div class="recording-content">
+                                        <div class="recording-indicator">
+                                            <i class="bi bi-mic-fill recording-icon"></i>
+                                            <span class="recording-text">Recording...Move away from button to cancel</span>
+                                            <span class="recording-timer" id="recordingTimer">00:00</span>
+                                        </div>
+                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
+                                            <i class="bi bi-x-lg"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                                
                                 <form id="messageForm">
                                     <div class="input-group">
                                         <input type="file" id="fileInput" class="file-input-hidden" onchange="handleFileSelect(event)" accept="*/*">
                                         <button type="button" class="file-upload-btn" onclick="triggerFileUpload()" title="Attach file">
                                             <i class="bi bi-paperclip"></i>
                                         </button>
-                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" onclick="toggleVoiceRecording()" title="Record voice message">
+                                        <button type="button" class="voice-record-btn" id="voiceRecordBtn" title="Hold to record voice message">
                                             <i class="bi bi-mic-fill"></i>
                                         </button>
                                         <input type="text" id="messageInput" class="form-control" placeholder="Type your message..." autocomplete="off">
@@ -815,20 +829,6 @@
                                         </span>
                                         <button type="button" class="btn-remove-file" onclick="removeFilePreview()">
                                             <i class="fas fa-times"></i>
-                                        </button>
-                                    </div>
-                                </div>
-                                
-                                <!-- Voice Recording UI -->
-                                <div id="voiceRecordingUI" class="voice-recording-ui" style="display: none;">
-                                    <div class="recording-content">
-                                        <div class="recording-indicator">
-                                            <i class="bi bi-mic-fill recording-icon"></i>
-                                            <span class="recording-text">Recording...</span>
-                                            <span class="recording-timer" id="recordingTimer">00:00</span>
-                                        </div>
-                                        <button type="button" class="btn-cancel-recording" onclick="cancelVoiceRecording()" title="Cancel recording">
-                                            <i class="bi bi-x-lg"></i>
                                         </button>
                                     </div>
                                 </div>

@@ -10,7 +10,14 @@ let recordingStartTime = null;
 let recordingTimer = null;
 let recordedAudioBlob = null;
 let recordingDuration = 0;
-const MAX_RECORDING_DURATION = 30; // 30 seconds
+const MAX_RECORDING_DURATION = 60; // 60 seconds
+const MIN_RECORDING_DURATION = 1; // 1 second minimum
+
+// Hold-to-record state tracking
+let isHolding = false;
+let isInCancelZone = false;
+let currentVoiceButton = null;
+let buttonRect = null; // Store button position when recording starts
 
 /**
  * Check microphone permission status
@@ -44,11 +51,20 @@ async function checkMicrophonePermission() {
  * Initialize voice recording UI based on permission status
  */
 async function initializeVoiceRecording() {
+    // Prevent duplicate initialization
+    if (window.voiceRecordingInitialized) {
+        return;
+    }
     
     const permissionStatus = await checkMicrophonePermission();
     const voiceBtn = document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn');
     
-    if (!voiceBtn) return;
+    if (!voiceBtn) {
+        return;
+    }
+    
+    // Mark as initialized
+    window.voiceRecordingInitialized = true;
     
     // Check if we're in iframe mode
     const isIframe = window.self !== window.top;
@@ -56,34 +72,283 @@ async function initializeVoiceRecording() {
     if (isIframe) {
         // Try to enable voice recording in iframe mode
         voiceBtn.disabled = false;
-        voiceBtn.title = 'Record voice message (may require additional permissions in iframe)';
+        voiceBtn.title = 'Hold to record voice message (may require additional permissions in iframe)';
         voiceBtn.style.opacity = '1';
         voiceBtn.style.cursor = 'pointer';
     } else if (permissionStatus === 'denied') {
         // Show that permission is needed
-        voiceBtn.title = 'Microphone access denied. Click to see how to enable it.';
+        voiceBtn.title = 'Microphone access denied. Hold to record voice message.';
         voiceBtn.style.opacity = '0.6';
     } else if (permissionStatus === 'granted') {
         // Ready to record
-        voiceBtn.title = 'Record voice message';
+        voiceBtn.title = 'Hold to record voice message';
         voiceBtn.style.opacity = '1';
     } else {
         // Will prompt when clicked
-        voiceBtn.title = 'Record voice message (click to allow microphone access)';
+        voiceBtn.title = 'Hold to record voice message (will prompt for microphone access)';
         voiceBtn.style.opacity = '1';
+    }
+    
+    // Add hold-to-record event listeners
+    addHoldToRecordListeners(voiceBtn);
+}
+
+/**
+ * Add hold-to-record event listeners to voice button
+ */
+function addHoldToRecordListeners(voiceBtn) {
+    // Remove old click listener and onclick attribute (for backward compatibility)
+    voiceBtn.removeEventListener('click', toggleVoiceRecording);
+    voiceBtn.removeAttribute('onclick');
+    
+    // Add a click event listener that prevents any action
+    voiceBtn.addEventListener('click', function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        return false;
+    }, true); // Use capture phase to catch it early
+    
+    // Don't clone the node - this might be causing the issue
+    // Instead, just add the listeners directly
+    
+    // Mouse events for desktop
+    voiceBtn.addEventListener('mousedown', handleVoiceButtonDown);
+    voiceBtn.addEventListener('mouseup', handleVoiceButtonUp);
+    
+    // Disable mouse leave event - it's causing premature cancellation
+    // voiceBtn.addEventListener('mouseleave', handleVoiceButtonLeave);
+    
+    // Add mouse enter event to potentially resume if mouse comes back quickly
+    voiceBtn.addEventListener('mouseenter', handleVoiceButtonEnter);
+    
+    // Touch events for mobile
+    voiceBtn.addEventListener('touchstart', handleVoiceButtonDown, { passive: false });
+    voiceBtn.addEventListener('touchend', handleVoiceButtonUp, { passive: false });
+    
+    // Add global movement listeners to document for cancel detection (only once)
+    if (!window.voiceRecordingGlobalListenersAdded) {
+        document.addEventListener('mousemove', handleVoiceButtonMove);
+        document.addEventListener('touchmove', handleVoiceButtonMove, { passive: false });
+        // Add escape key listener for cancellation
+        document.addEventListener('keydown', handleVoiceRecordingKeydown);
+        window.voiceRecordingGlobalListenersAdded = true;
+    }
+    
+    // Prevent context menu on long press
+    voiceBtn.addEventListener('contextmenu', (e) => e.preventDefault());
+    
+    return voiceBtn;
+}
+
+/**
+ * Toggle voice recording on/off (legacy function for compatibility)
+ */
+function toggleVoiceRecording() {
+    // This function is kept for compatibility but now uses hold-to-record
+    // Legacy function - hold-to-record functionality is used instead
+}
+
+/**
+ * Handle voice recording button press (start hold-to-record)
+ */
+function handleVoiceButtonDown(event) {
+    event.preventDefault();
+    
+    // Prevent multiple simultaneous recordings
+    if (isHolding || (mediaRecorder && mediaRecorder.state === 'recording')) {
+        return;
+    }
+    
+    // Store the time when button was pressed
+    window.voiceButtonDownTime = Date.now();
+    
+    // Store button reference immediately (before setTimeout)
+    const button = event.currentTarget;
+    currentVoiceButton = button;
+    
+    // Set holding flag immediately for mouseup detection
+    isHolding = true;
+    
+    // Check after 200ms if the user is still holding
+    setTimeout(() => {
+        if (isHolding) {
+            isInCancelZone = false;
+            
+            // Store button position for cancel detection
+            buttonRect = button.getBoundingClientRect();
+            
+            // Add visual feedback
+            button.classList.add('recording');
+            
+            // Start recording
+            startVoiceRecording();
+        }
+    }, 200);
+}
+
+/**
+ * Handle voice recording button release (stop and send or cancel)
+ */
+function handleVoiceButtonUp(event) {
+    event.preventDefault();
+    
+    if (!isHolding) {
+        return;
+    }
+    
+    // If user releases quickly (within 200ms), it's a click, not a hold
+    const holdDuration = Date.now() - (window.voiceButtonDownTime || Date.now());
+    
+    if (holdDuration < 200) {
+        isHolding = false;
+        return;
+    }
+    
+    isHolding = false;
+    
+    // Remove visual feedback
+    const button = event.currentTarget || currentVoiceButton;
+    if (button) {
+        button.classList.remove('recording');
+        button.classList.remove('cancel-zone');
+    }
+    
+    // Clear stored button rect
+    buttonRect = null;
+    
+    // Check if we should send or cancel
+    const shouldSend = recordingDuration >= MIN_RECORDING_DURATION && !isInCancelZone;
+    
+    if (shouldSend) {
+        // Stop recording and wait for blob creation
+        stopVoiceRecordingAndSend();
+    } else {
+        // Cancel the recording
+        cancelVoiceRecording();
+        
+        // Show message if recording was too short
+        if (recordingDuration < MIN_RECORDING_DURATION && recordingDuration > 0) {
+            const messageInput = document.getElementById('messageInput') || document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.placeholder = 'Recording too short (minimum 1 second)';
+                setTimeout(() => {
+                    messageInput.placeholder = 'Type your message...';
+                }, 2000);
+            }
+        }
     }
 }
 
 /**
- * Toggle voice recording on/off
+ * Handle mouse leaving the button - cancel recording immediately
  */
-function toggleVoiceRecording() {
-    if (mediaRecorder && mediaRecorder.state === 'recording') {
-        // Stop recording
-        stopVoiceRecording();
+function handleVoiceButtonLeave(event) {
+    if (!isHolding) {
+        return;
+    }
+    
+    // Add a small delay to prevent accidental cancellation from tiny movements
+    setTimeout(() => {
+        if (isHolding) {
+            // Cancel recording immediately
+            isHolding = false;
+            
+            // Remove visual feedback
+            if (currentVoiceButton) {
+                currentVoiceButton.classList.remove('recording');
+                currentVoiceButton.classList.remove('cancel-zone');
+            }
+            
+            // Cancel the recording
+            cancelVoiceRecording();
+            
+            // Clear stored button rect
+            buttonRect = null;
+        }
+    }, 100); // 100ms delay to prevent accidental cancellation
+}
+
+/**
+ * Handle mouse entering the button - potentially resume recording if it was cancelled
+ */
+function handleVoiceButtonEnter(event) {
+    // If we're not holding but we have a recording in progress, don't interfere
+    if (!isHolding) {
+        return;
+    }
+}
+
+/**
+ * Handle mouse/touch movement during recording - backup cancellation method
+ */
+function handleVoiceButtonMove(event) {
+    if (!isHolding || !currentVoiceButton) {
+        return;
+    }
+    
+    // Get current button position
+    const currentRect = currentVoiceButton.getBoundingClientRect();
+    let clientX, clientY;
+    
+    // Get coordinates from mouse or touch event
+    if (event.type === 'mousemove') {
+        clientX = event.clientX;
+        clientY = event.clientY;
+    } else if (event.type === 'touchmove') {
+        clientX = event.touches[0].clientX;
+        clientY = event.touches[0].clientY;
     } else {
-        // Start recording
-        startVoiceRecording();
+        return;
+    }
+    
+    // Simple check: if mouse is not over the button, cancel immediately
+    const isOverButton = clientX >= currentRect.left && 
+                        clientX <= currentRect.right && 
+                        clientY >= currentRect.top && 
+                        clientY <= currentRect.bottom;
+    
+    // Add a larger buffer zone around the button (20px) to prevent accidental cancellation
+    const bufferZone = 20;
+    const isInBufferZone = clientX >= (currentRect.left - bufferZone) && 
+                         clientX <= (currentRect.right + bufferZone) && 
+                         clientY >= (currentRect.top - bufferZone) && 
+                         clientY <= (currentRect.bottom + bufferZone);
+    
+    if (!isOverButton && !isInBufferZone) {
+        // Cancel recording immediately
+        isHolding = false;
+        
+        // Remove visual feedback
+        currentVoiceButton.classList.remove('recording');
+        currentVoiceButton.classList.remove('cancel-zone');
+        
+        // Cancel the recording
+        cancelVoiceRecording();
+        
+        // Clear stored button rect
+        buttonRect = null;
+    }
+}
+
+/**
+ * Handle escape key to cancel recording
+ */
+function handleVoiceRecordingKeydown(event) {
+    if (event.key === 'Escape' && isHolding) {
+        isHolding = false;
+        
+        // Remove visual feedback
+        if (currentVoiceButton) {
+            currentVoiceButton.classList.remove('recording');
+            currentVoiceButton.classList.remove('cancel-zone');
+        }
+        
+        // Cancel the recording
+        cancelVoiceRecording();
+        
+        // Clear stored button rect
+        buttonRect = null;
     }
 }
 
@@ -128,8 +393,14 @@ async function startVoiceRecording() {
             const mimeType = mediaRecorder.mimeType || 'audio/webm';
             recordedAudioBlob = new Blob(audioChunks, { type: mimeType });
             
-            // Show preview and confirmation
-            showVoicePreview(recordingDuration);
+            // Check if we should auto-send or show preview
+            if (window.shouldAutoSendVoiceMessage) {
+                window.shouldAutoSendVoiceMessage = false;
+                sendVoiceMessage();
+            } else {
+                // Show preview and confirmation (legacy behavior)
+                showVoicePreview(recordingDuration);
+            }
         };
         
         // Start recording
@@ -144,7 +415,7 @@ async function startVoiceRecording() {
         const messageInput = document.getElementById('messageInput') || document.getElementById('message-input');
         if (messageInput) {
             messageInput.disabled = true;
-            messageInput.placeholder = 'Recording voice message...';
+            messageInput.placeholder = 'Recording voice message...Release to send, drag away to cancel';
         }
         
         // Change voice button appearance (handle both customer and client interfaces)
@@ -155,7 +426,6 @@ async function startVoiceRecording() {
         }
         
     } catch (error) {
-        console.error('Error accessing microphone:', error);
         
         if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
             // Check if this is a permissions policy violation
@@ -217,7 +487,35 @@ function stopVoiceRecording() {
         const voiceBtn = document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn');
         if (voiceBtn) {
             voiceBtn.classList.remove('recording');
-            voiceBtn.title = 'Record voice message';
+            voiceBtn.title = 'Hold to record voice message';
+        }
+    }
+}
+
+/**
+ * Stop voice recording and auto-send the message
+ */
+function stopVoiceRecordingAndSend() {
+    // Set flag to auto-send when recording stops
+    window.shouldAutoSendVoiceMessage = true;
+    
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop();
+        stopRecordingTimer();
+        hideRecordingUI();
+        
+        // Re-enable text input
+        const messageInput = document.getElementById('messageInput') || document.getElementById('message-input');
+        if (messageInput) {
+            messageInput.disabled = false;
+            messageInput.placeholder = 'Type your message...';
+        }
+        
+        // Reset voice button appearance
+        const voiceBtn = document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn');
+        if (voiceBtn) {
+            voiceBtn.classList.remove('recording');
+            voiceBtn.title = 'Hold to record voice message';
         }
     }
 }
@@ -241,6 +539,7 @@ function cancelVoiceRecording() {
         audioChunks = [];
         recordedAudioBlob = null;
         recordingDuration = 0;
+        buttonRect = null;
         
         stopRecordingTimer();
         hideRecordingUI();
@@ -307,10 +606,22 @@ function startRecordingTimer() {
             timerDisplay.textContent = timeString;
         }
         
-        // Auto-stop at max duration
+        // Auto-stop and send at max duration
         if (elapsed >= MAX_RECORDING_DURATION) {
-            stopVoiceRecording();
-            alert(`Maximum recording duration of ${MAX_RECORDING_DURATION} seconds reached.`);
+            isHolding = false;
+            if (currentVoiceButton) {
+                currentVoiceButton.classList.remove('recording');
+            }
+            stopVoiceRecordingAndSend();
+            
+            // Show feedback message
+            const messageInput = document.getElementById('messageInput') || document.getElementById('message-input');
+            if (messageInput) {
+                messageInput.placeholder = `Voice message sent (${MAX_RECORDING_DURATION} second limit reached)`;
+                setTimeout(() => {
+                    messageInput.placeholder = 'Type your message...';
+                }, 3000);
+            }
         }
     }, 1000);
 }
@@ -735,6 +1046,16 @@ window.removeVoicePreview = removeVoicePreview;
 window.createVoiceMessagePlayer = createVoiceMessagePlayer;
 window.toggleVoicePlayback = toggleVoicePlayback;
 window.initializeVoiceRecording = initializeVoiceRecording;
+window.handleVoiceButtonDown = handleVoiceButtonDown;
+window.handleVoiceButtonUp = handleVoiceButtonUp;
+window.handleVoiceButtonMove = handleVoiceButtonMove;
+window.addHoldToRecordListeners = addHoldToRecordListeners;
+
+// Manual initialization function for testing
+window.manualInitVoiceRecording = function() {
+    window.voiceRecordingInitialized = false;
+    initializeVoiceRecording();
+};
 
 // Initialize voice recording when DOM is ready
 document.addEventListener('DOMContentLoaded', function() {
@@ -746,3 +1067,37 @@ document.addEventListener('DOMContentLoaded', function() {
         setTimeout(initializeVoiceRecording, 100);
     }
 });
+
+// Also initialize when the window loads (for page refreshes)
+window.addEventListener('load', function() {
+    // Additional initialization for page refreshes
+    setTimeout(() => {
+        if (document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn')) {
+            initializeVoiceRecording();
+        }
+    }, 200);
+});
+
+// Additional initialization after a longer delay (for slow-loading pages)
+setTimeout(() => {
+    const voiceBtn = document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn');
+    if (voiceBtn && !window.voiceRecordingInitialized) {
+        initializeVoiceRecording();
+    }
+}, 1000);
+
+// Global function to re-initialize voice recording (for dynamic content)
+window.reinitializeVoiceRecording = function() {
+    // Reset initialization flag to allow re-initialization
+    window.voiceRecordingInitialized = false;
+    setTimeout(initializeVoiceRecording, 100);
+};
+
+// Periodic check to ensure voice recording is working (fallback)
+setInterval(() => {
+    const voiceBtn = document.getElementById('voiceRecordBtn') || document.getElementById('voice-record-btn');
+    if (voiceBtn && !window.voiceRecordingInitialized) {
+        // Voice button exists but not initialized, try to initialize
+        window.reinitializeVoiceRecording();
+    }
+}, 5000); // Check every 5 seconds
