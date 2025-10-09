@@ -421,7 +421,8 @@
                         message: '', // No text message, just show the file
                         message_type: data.file_data.file_type || 'file',
                         file_data: data.file_data,
-                        timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                        timestamp: new Date().toISOString(),
+                        created_at: new Date().toISOString()
                     };
                     
                     ws.send(JSON.stringify(fileMessage));

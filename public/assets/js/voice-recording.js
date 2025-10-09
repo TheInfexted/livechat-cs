@@ -461,7 +461,8 @@ function sendVoiceMessage() {
                     message: '', // No text message, just the voice file
                     message_type: 'voice',
                     file_data: data.file_data,
-                    timestamp: new Date().toISOString().slice(0, 19).replace('T', ' ')
+                    timestamp: new Date().toISOString(),
+                    created_at: new Date().toISOString()
                 };
                 
                 ws.send(JSON.stringify(fileMessage));
@@ -589,7 +590,7 @@ function toggleVoicePlayback(messageId, audioUrl) {
         audio.addEventListener('loadedmetadata', () => {
             const durationEl = document.getElementById(`voice-duration-${messageId}`);
             if (durationEl) {
-                durationEl.textContent = formatTime(audio.duration);
+                durationEl.textContent = formatAudioDuration(audio.duration);
             }
         });
         
@@ -639,7 +640,7 @@ function updateVoiceProgress(messageId) {
     }
     
     if (currentTime) {
-        currentTime.textContent = formatTime(audio.currentTime);
+        currentTime.textContent = formatAudioDuration(audio.currentTime);
     }
 }
 
@@ -663,6 +664,17 @@ function seekVoiceMessage(event, messageId) {
  * Format time in MM:SS
  */
 function formatTime(seconds) {
+    if (isNaN(seconds)) return '00:00';
+    
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+}
+
+/**
+ * Format audio duration in MM:SS (same as formatTime but with a different name for clarity)
+ */
+function formatAudioDuration(seconds) {
     if (isNaN(seconds)) return '00:00';
     
     const mins = Math.floor(seconds / 60);

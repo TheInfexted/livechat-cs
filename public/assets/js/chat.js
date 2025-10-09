@@ -1583,19 +1583,42 @@ function displayMessage(data) {
                 textBubble.innerHTML = makeLinksClickable(data.message);
                 messageContent.appendChild(textBubble);
             }
+            
+            // For voice messages, don't add a separate timestamp as the voice player has its own time display
+            const isVoiceMessage = data.file_data.file_type === 'voice' || 
+                data.file_data.file_type === 'audio' || 
+                data.message_type === 'voice' ||
+                (data.file_data.mime_type && data.file_data.mime_type.startsWith('audio/')) ||
+                (data.file_data.original_name && data.file_data.original_name.match(/^voice_message_/)) ||
+                // Additional check for voice messages based on file content
+                (data.file_data.original_name && data.file_data.original_name.includes('voice'));
+            
+            if (!isVoiceMessage) {
+                // Only add timestamp for non-voice file messages
+                const time = document.createElement('div');
+                time.className = 'message-time';
+                time.textContent = formatTime(data.created_at || data.timestamp);
+                messageContent.appendChild(time);
+            } else {
+                // For voice messages, add a timestamp similar to text messages
+                const time = document.createElement('div');
+                time.className = 'message-time';
+                time.textContent = formatTime(data.created_at || data.timestamp);
+                messageContent.appendChild(time);
+            }
         } else {
             // Regular text message
             const bubble = document.createElement('div');
             bubble.className = 'message-bubble';
             bubble.innerHTML = makeLinksClickable(data.message);
             messageContent.appendChild(bubble);
+            
+            // Add timestamp for text messages
+            const time = document.createElement('div');
+            time.className = 'message-time';
+            time.textContent = formatTime(data.created_at || data.timestamp);
+            messageContent.appendChild(time);
         }
-        
-        const time = document.createElement('div');
-        time.className = 'message-time';
-        time.textContent = formatTime(data.created_at || data.timestamp);
-        
-        messageContent.appendChild(time);
         
         // Assemble the message
         messageDiv.appendChild(avatarDiv);
